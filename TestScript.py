@@ -26,6 +26,7 @@ class PySparkClass():
                 .appName("testingAppName")\
                 .getOrCreate()
             return
+
 import os, sys, random, re
 file_path = os.path.join(os.path.dirname(__file__), "WeatherCSV")
 only_csv_rgx = re.compile(r'.*\.csv$')
@@ -41,4 +42,11 @@ df_load = myClass\
     .option("header", "true")\
     .csv(file_list_short)
 
-print(df_load.first())
+print(df_load.take(2))
+
+df_1 = df_load.select(['STATION', 'DATE', 'TEMP'])
+print(df_1.take(3))
+
+df_agg = df_1.groupby('STATION').agg({'TEMP':'mean'}).withColumnRenamed('avg(TEMP)', 'AVG_TEMP')
+print(df_agg.explain(extended=True))
+print(df_agg.take(5))
