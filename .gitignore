@@ -1,2 +1,4 @@
-WeatherCSV/*.csv
+*.csv
 *.pyc
+*.crc
+
