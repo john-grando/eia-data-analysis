@@ -1,0 +1,40 @@
+== Parsed Logical Plan ==
+'Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, date_split#86, value#102, year#119, 'date_split[0] AS month#137]
++- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, date_split#86, value#102, date_split#86[0] AS year#119]
+   +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, date_split#86, data_exploded#57[1] AS value#102]
+      +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, split(regexp_replace(date#71, ([0-9]{4})(?!$), $1, ), , ) AS date_split#86]
+         +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, data_exploded#57[0] AS date#71]
+            +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57]
+               +- Generate explode(data#8), false, [data_exploded#57]
+                  +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, regexp_replace(series_id#15, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#43, start#16, units#17]
+                     +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, regexp_replace(name#12, ^(.*)(, Monthly)$, $1) AS name#30, notes#13, parent_category_id#14, series_id#15, start#16, units#17]
+                        +- Filter (f#10 = M)
+                           +- Relation[category_id#6,childseries#7,data#8,end#9,f#10,last_updated#11,name#12,notes#13,parent_category_id#14,series_id#15,start#16,units#17] json
+
+== Analyzed Logical Plan ==
+category_id: string, childseries: array<string>, data: array<array<string>>, end: string, f: string, last_updated: string, name: string, notes: string, parent_category_id: string, series_id: string, start: string, units: string, data_exploded: array<string>, date: string, date_split: array<string>, value: string, year: string, month: string
+Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, date_split#86, value#102, year#119, date_split#86[0] AS month#137]
++- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, date_split#86, value#102, date_split#86[0] AS year#119]
+   +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, date_split#86, data_exploded#57[1] AS value#102]
+      +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, date#71, split(regexp_replace(date#71, ([0-9]{4})(?!$), $1, ), , ) AS date_split#86]
+         +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, data_exploded#57[0] AS date#71]
+            +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57]
+               +- Generate explode(data#8), false, [data_exploded#57]
+                  +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, regexp_replace(series_id#15, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#43, start#16, units#17]
+                     +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, regexp_replace(name#12, ^(.*)(, Monthly)$, $1) AS name#30, notes#13, parent_category_id#14, series_id#15, start#16, units#17]
+                        +- Filter (f#10 = M)
+                           +- Relation[category_id#6,childseries#7,data#8,end#9,f#10,last_updated#11,name#12,notes#13,parent_category_id#14,series_id#15,start#16,units#17] json
+
+== Optimized Logical Plan ==
+Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, data_exploded#57[0] AS date#71, split(regexp_replace(data_exploded#57[0], ([0-9]{4})(?!$), $1, ), , ) AS date_split#86, data_exploded#57[1] AS value#102, split(regexp_replace(data_exploded#57[0], ([0-9]{4})(?!$), $1, ), , )[0] AS year#119, split(regexp_replace(data_exploded#57[0], ([0-9]{4})(?!$), $1, ), , )[0] AS month#137]
++- Generate explode(data#8), false, [data_exploded#57]
+   +- Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, regexp_replace(name#12, ^(.*)(, Monthly)$, $1) AS name#30, notes#13, parent_category_id#14, regexp_replace(series_id#15, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#43, start#16, units#17]
+      +- Filter (isnotnull(f#10) && (f#10 = M))
+         +- Relation[category_id#6,childseries#7,data#8,end#9,f#10,last_updated#11,name#12,notes#13,parent_category_id#14,series_id#15,start#16,units#17] json
+
+== Physical Plan ==
+*(2) Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17, data_exploded#57, data_exploded#57[0] AS date#71, split(regexp_replace(data_exploded#57[0], ([0-9]{4})(?!$), $1, ), , ) AS date_split#86, data_exploded#57[1] AS value#102, split(regexp_replace(data_exploded#57[0], ([0-9]{4})(?!$), $1, ), , )[0] AS year#119, split(regexp_replace(data_exploded#57[0], ([0-9]{4})(?!$), $1, ), , )[0] AS month#137]
++- Generate explode(data#8), [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, name#30, notes#13, parent_category_id#14, series_id#43, start#16, units#17], false, [data_exploded#57]
+   +- *(1) Project [category_id#6, childseries#7, data#8, end#9, f#10, last_updated#11, regexp_replace(name#12, ^(.*)(, Monthly)$, $1) AS name#30, notes#13, parent_category_id#14, regexp_replace(series_id#15, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#43, start#16, units#17]
+      +- *(1) Filter (isnotnull(f#10) && (f#10 = M))
+         +- *(1) FileScan json [category_id#6,childseries#7,data#8,end#9,f#10,last_updated#11,name#12,notes#13,parent_category_id#14,series_id#15,start#16,units#17] Batched: false, Format: JSON, Location: InMemoryFileIndex[hdfs://localhost:9000/EIATotal/TOTAL.json], PartitionFilters: [], PushedFilters: [IsNotNull(f), EqualTo(f,M)], ReadSchema: struct<category_id:string,childseries:array<string>,data:array<array<string>>,end:string,f:string...

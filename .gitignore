@@ -1,4 +1,8 @@
-*.csv
 *.pyc
 *.crc
-
+app/logs/*.log
+EIAElec/*.json
+EIATotal/*.json
+WeatherCSV/*.csv
+tmp/*
+!tmp/*.py
