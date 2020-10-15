@@ -21,14 +21,6 @@ def main():
     #ensure only one sc and spark instance is running
     global MySpark
     MySpark = MySpark or MyPySpark(master = 'local[3]')
-    S3Object = S3Access(
-        bucket = 'power-plant-data',
-        key = 'eia-total-dataframes'
-    )
-    S3Object.upload_datafame_s3(
-        df = MySpark.sc.parallelize(range(1000)),
-        file_name = 'yearly_sum_df.pkl')
-    sys.exit()
     #make schema
     # int_fields_l = []
     # str_fields_l = []
@@ -110,6 +102,10 @@ def main():
         df = total_df,
         description = 'data_cleanse',
         stamp = '')
+
+    MySpark.save_to_pickle(
+        object = yearly_sum_df,
+        location = 'total_cleansed')
 
     MySpark.explain_to_file(
         df = yearly_sum_df,

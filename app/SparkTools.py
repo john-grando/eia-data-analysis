@@ -3,6 +3,8 @@
 
 import datetime
 from app import MyLogger
+from pyspark.sql import DataFrame
+from pyspark.rdd import RDD
 
 class MyPySpark():
 
@@ -16,17 +18,21 @@ class MyPySpark():
                 import findspark
                 findspark.init()
                 import pyspark
+                #set spark.driver.memory instead of executor when running in standalone
                 conf = pyspark\
                     .SparkConf()\
+                    .set('spark.driver.memory', '6g')\
                     .setAppName("PowerPlant")\
                     .setMaster(master)
-                self.sc = pyspark.SparkContext(conf=conf)
+                self.sc = pyspark\
+                    .SparkContext(conf=conf)
                 self.sc.setLogLevel('WARN')
                 self.spark = pyspark\
                     .sql\
                     .SparkSession(self.sc)\
                     .builder\
                     .getOrCreate()
+                self.logger.info('spark and sc created: %s', self.spark.sparkContext.getConf().getAll())
             except Exception as e:
                 self.logger.error("pyspark failed to initialize")
                 self.logger.exception(e)
@@ -35,15 +41,35 @@ class MyPySpark():
     @staticmethod
     def explain_to_file(
         df,
-        loc = 'ExplainFiles',
+        location = 'ExplainFiles',
         description = '',
         stamp = datetime.datetime.now(),
         logger_output = False):
         try:
             if logger_output:
                 logger_output.info(df._jdf.queryExecution().toString())
-            with open('/'.join([loc,'spark_explain_{}.{}.txt'.format(description, stamp or 'general')]), 'w') as f:
+            with open('/'.join([location,'spark_explain_{}.{}.txt'.format(description, stamp or 'general')]), 'w') as f:
                 f.write(df._jdf.queryExecution().toString())
         except:
             print('explain plan output failed')
+        return
+
+    def save_to_pickle(
+        self,
+        object,
+        location,
+        base_dir = '/PickleRDD',
+        batch_size = 10):
+        """
+        Save Dataframe or RDD as pickle file
+        """
+        if isinstance(object, DataFrame):
+            object = object.rdd
+        if not isinstance(object, RDD):
+            self.logger.error('object is not an RDD')
+            return
+        object.saveAsPickleFile(
+            path = '/'.join([base_dir, location]),
+            batchSize = batch_size)
+        self.logger.info("object pickled: %s", location)
         return
