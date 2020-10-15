@@ -11,14 +11,24 @@ py_file_path = os.path.join(
     ".."
 )
 sys.path.append(py_file_path)
-from app import MyPySpark, MyLogger
+from app import MyLogger
+from app.SparkTools import MyPySpark
+from app.S3Tools import S3Access
 
 MySpark = None
 
 def main():
     #ensure only one sc and spark instance is running
     global MySpark
-    MySpark = MySpark or MyPySpark()
+    MySpark = MySpark or MyPySpark(master = 'local[3]')
+    S3Object = S3Access(
+        bucket = 'power-plant-data',
+        key = 'eia-total-dataframes'
+    )
+    S3Object.upload_datafame_s3(
+        df = MySpark.sc.parallelize(range(1000)),
+        file_name = 'yearly_sum_df.pkl')
+    sys.exit()
     #make schema
     # int_fields_l = []
     # str_fields_l = []
@@ -105,8 +115,6 @@ def main():
         df = yearly_sum_df,
         description = 'yearly_sum',
         stamp = '')
-
-    yearly_sum_df.show()
 
 if __name__ == "__main__":
     main()
