@@ -1,7 +1,7 @@
 #!/home/grandocu/anaconda3/envs/colt/bin
 # -*- coding: utf-8 -*-
 
-import os, sys, re, tempfile
+import os, sys, re, tempfile, subprocess
 import boto3
 from botocore.client import ClientError
 from app import MyLogger
@@ -17,6 +17,35 @@ class S3Access():
         self.s3 = boto3.client('s3')
         self.bucket = bucket
         self.key = key
+        return
+
+    def sync_hdfs_to_s3(
+        self,
+        hdfs_site,
+        hdfs_folder):
+        """
+        sync hdfs folder with s3
+
+        Need to delete all files in key before uploading to
+        ensure only new data exists
+        """
+        self.logger.info('hdfs sync started')
+        sub_process = subprocess.Popen(
+            [
+                "hadoop",
+                "distcp",
+                "-Dfs.s3a.access.key={}".format(os.getenv('AWS_ACCESS_KEY_ID')),
+                "-Dfs.s3a.secret.key={}".format(os.getenv('AWS_SECRET_ACCESS_KEY')),
+                "-overwrite",
+                "{}/{}/".format(hdfs_site, hdfs_folder),
+                "s3a://{}/{}/".format(self.bucket, self.key)
+            ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+        process_error, _ = sub_process.communicate()
+        if sub_process.returncode != 0:
+            self.logger.error('hdfs sync failed:\n%s', process_error)
+            return
+        self.logger.info('hdfs sync ended')
         return
 
     def get_file_list(
@@ -38,6 +67,7 @@ class S3Access():
                 sys.exit(1)
             try:
                 f_regex = re.compile(file_regex)
+                #python 3.8+ required for walrus operator
                 s3Contents = [f['Key'] for f in resp['Contents'] if (match := re.search(f_regex, f['Key']))]
             except Exception as e:
                 self.logger.exception(e)
@@ -51,8 +81,9 @@ class S3Access():
                 break
         if not s3Contents:
             self.logger.error(
-                'No files were returned from s3 bucket: %s and location: %s',
+                'No files were returned from s3 bucket: %s and location: %s filtering by %s',
                 self.bucket,
-                self.key)
+                self.key,
+                file_regex)
             sys.exit(1)
         return s3Contents

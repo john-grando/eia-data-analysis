@@ -53,23 +53,3 @@ class MyPySpark():
         except:
             print('explain plan output failed')
         return
-
-    def save_to_pickle(
-        self,
-        object,
-        location,
-        base_dir = '/PickleRDD',
-        batch_size = 10):
-        """
-        Save Dataframe or RDD as pickle file
-        """
-        if isinstance(object, DataFrame):
-            object = object.rdd
-        if not isinstance(object, RDD):
-            self.logger.error('object is not an RDD')
-            return
-        object.saveAsPickleFile(
-            path = '/'.join([base_dir, location]),
-            batchSize = batch_size)
-        self.logger.info("object pickled: %s", location)
-        return
