@@ -1,4 +1,4 @@
-#!/home/grandocu/anaconda3/envs/colt/bin
+#!/home/grandocu/anaconda3/envs/bigdata/bin
 # -*- coding: utf-8 -*-
 
 import os, sys, re, tempfile, subprocess
@@ -10,8 +10,8 @@ class S3Access():
     """
     Class to handle s3 access functions and calls
     """
-    def __init__(self, bucket, key):
-        self.logger = MyLogger().logger
+    def __init__(self, bucket, key, **kwargs):
+        self.logger = MyLogger(logger_name = kwargs.get('logger_name')).logger
         #instantiate aws
         self.s3_r = boto3.resource('s3')
         self.s3 = boto3.client('s3')
@@ -26,9 +26,14 @@ class S3Access():
         """
         sync hdfs folder with s3
 
-        Need to delete all files in key before uploading to
-        ensure only new data exists
+        All file contents will be deleted before sync upload
         """
+        self.logger.info("removing previous files")
+        file_list = self.get_file_list()
+        for f in file_list:
+            self.s3.delete_object(
+                Bucket = self.bucket,
+                Key = f)
         self.logger.info('hdfs sync started')
         sub_process = subprocess.Popen(
             [

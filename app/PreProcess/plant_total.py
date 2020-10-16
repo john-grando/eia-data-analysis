@@ -1,5 +1,4 @@
-import os, sys, random, re
-import pandas as pd
+import os, sys, re
 from pyspark.sql.types import *
 import pyspark.sql.functions as pysF
 
@@ -112,14 +111,14 @@ def main():
         mode = 'overwrite',
         header = True)
 
-    S3O = S3Access(
-        bucket = 'power-plant-data',
-        key = 'output-files'
-    )
-    S3O.sync_hdfs_to_s3(
-        hdfs_site = 'hdfs://localhost:9000',
-        hdfs_folder = 'OutputFiles'
-    )
+    # S3O = S3Access(
+    #     bucket = 'power-plant-data',
+    #     key = 'output-files'
+    # )
+    # S3O.sync_hdfs_to_s3(
+    #     hdfs_site = 'hdfs://localhost:9000',
+    #     hdfs_folder = 'OutputFiles'
+    # )
 
 if __name__ == "__main__":
     main()

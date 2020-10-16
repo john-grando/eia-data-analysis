@@ -6,3 +6,4 @@ EIATotal/*.json
 WeatherCSV/*.csv
 tmp/*
 !tmp/*.py
+app/Notebooks/.ipynb_checkpoints/*

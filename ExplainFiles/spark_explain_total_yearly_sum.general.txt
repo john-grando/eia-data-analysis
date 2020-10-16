@@ -1,0 +1,48 @@
+== Parsed Logical Plan ==
+'Sort [year('date) ASC NULLS FIRST, 'series_id ASC NULLS FIRST], true
++- Aggregate [series_id#44, year(date#87)], [series_id#44, year(date#87) AS year(date)#222, sum(cast(value#103 as double)) AS value#217, collect_set(name#31, 0, 0)[0] AS name#219, collect_set(units#18, 0, 0)[0] AS units#221]
+   +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58, date_raw#72, date#87, data_exploded#58[1] AS value#103]
+      +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58, date_raw#72, to_date(cast(unix_timestamp('date_raw, yyyyMM, None) as timestamp), None) AS date#87]
+         +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58, data_exploded#58[0] AS date_raw#72]
+            +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58]
+               +- Generate explode(data#9), false, [data_exploded#58]
+                  +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, regexp_replace(series_id#16, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#44, start#17, units#18]
+                     +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, regexp_replace(name#13, ^(.*)(, Monthly)$, $1) AS name#31, notes#14, parent_category_id#15, series_id#16, start#17, units#18]
+                        +- Filter (f#11 = M)
+                           +- Relation[category_id#7,childseries#8,data#9,end#10,f#11,last_updated#12,name#13,notes#14,parent_category_id#15,series_id#16,start#17,units#18] json
+
+== Analyzed Logical Plan ==
+series_id: string, year(date): int, value: double, name: string, units: string
+Project [series_id#44, year(date)#222, value#217, name#219, units#221]
++- Sort [year(date)#222 ASC NULLS FIRST, series_id#44 ASC NULLS FIRST], true
+   +- Aggregate [series_id#44, year(date#87)], [series_id#44, year(date#87) AS year(date)#222, sum(cast(value#103 as double)) AS value#217, collect_set(name#31, 0, 0)[0] AS name#219, collect_set(units#18, 0, 0)[0] AS units#221]
+      +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58, date_raw#72, date#87, data_exploded#58[1] AS value#103]
+         +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58, date_raw#72, to_date(cast(unix_timestamp('date_raw, yyyyMM, None) as timestamp), None) AS date#87]
+            +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58, data_exploded#58[0] AS date_raw#72]
+               +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, series_id#44, start#17, units#18, data_exploded#58]
+                  +- Generate explode(data#9), false, [data_exploded#58]
+                     +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, name#31, notes#14, parent_category_id#15, regexp_replace(series_id#16, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#44, start#17, units#18]
+                        +- Project [category_id#7, childseries#8, data#9, end#10, f#11, last_updated#12, regexp_replace(name#13, ^(.*)(, Monthly)$, $1) AS name#31, notes#14, parent_category_id#15, series_id#16, start#17, units#18]
+                           +- Filter (f#11 = M)
+                              +- Relation[category_id#7,childseries#8,data#9,end#10,f#11,last_updated#12,name#13,notes#14,parent_category_id#15,series_id#16,start#17,units#18] json
+
+== Optimized Logical Plan ==
+Sort [year(date)#222 ASC NULLS FIRST, series_id#44 ASC NULLS FIRST], true
++- Aggregate [series_id#44, year(date#87)], [series_id#44, year(date#87) AS year(date)#222, sum(cast(value#103 as double)) AS value#217, collect_set(name#31, 0, 0)[0] AS name#219, collect_set(units#18, 0, 0)[0] AS units#221]
+   +- Project [name#31, series_id#44, units#18, cast(cast(unix_timestamp(data_exploded#58[0], yyyyMM, Some(America/New_York)) as timestamp) as date) AS date#87, data_exploded#58[1] AS value#103]
+      +- Generate explode(data#9), [0], false, [data_exploded#58]
+         +- Project [data#9, regexp_replace(name#13, ^(.*)(, Monthly)$, $1) AS name#31, regexp_replace(series_id#16, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#44, units#18]
+            +- Filter (isnotnull(f#11) AND (f#11 = M))
+               +- Relation[category_id#7,childseries#8,data#9,end#10,f#11,last_updated#12,name#13,notes#14,parent_category_id#15,series_id#16,start#17,units#18] json
+
+== Physical Plan ==
+*(3) Sort [year(date)#222 ASC NULLS FIRST, series_id#44 ASC NULLS FIRST], true, 0
++- Exchange rangepartitioning(year(date)#222 ASC NULLS FIRST, series_id#44 ASC NULLS FIRST, 200), true, [id=#136]
+   +- ObjectHashAggregate(keys=[series_id#44, year(date#87)#2286], functions=[sum(cast(value#103 as double)), collect_set(name#31, 0, 0), collect_set(units#18, 0, 0)], output=[series_id#44, year(date)#222, value#217, name#219, units#221])
+      +- Exchange hashpartitioning(series_id#44, year(date#87)#2286, 200), true, [id=#134]
+         +- ObjectHashAggregate(keys=[series_id#44, year(date#87) AS year(date#87)#2286], functions=[partial_sum(cast(value#103 as double)), partial_collect_set(name#31, 0, 0), partial_collect_set(units#18, 0, 0)], output=[series_id#44, year(date#87)#2286, sum#248, buf#249, buf#250])
+            +- *(2) Project [name#31, series_id#44, units#18, cast(cast(unix_timestamp(data_exploded#58[0], yyyyMM, Some(America/New_York)) as timestamp) as date) AS date#87, data_exploded#58[1] AS value#103]
+               +- Generate explode(data#9), [name#31, series_id#44, units#18], false, [data_exploded#58]
+                  +- *(1) Project [data#9, regexp_replace(name#13, ^(.*)(, Monthly)$, $1) AS name#31, regexp_replace(series_id#16, ^[^.]+\.([^.]+)(\..*)*, $1) AS series_id#44, units#18]
+                     +- *(1) Filter (isnotnull(f#11) AND (f#11 = M))
+                        +- FileScan json [data#9,f#11,name#13,series_id#16,units#18] Batched: false, DataFilters: [isnotnull(f#11), (f#11 = M)], Format: JSON, Location: InMemoryFileIndex[hdfs://localhost:9000/EIATotal/TOTAL.json], PartitionFilters: [], PushedFilters: [IsNotNull(f), EqualTo(f,M)], ReadSchema: struct<data:array<array<string>>,f:string,name:string,series_id:string,units:string>

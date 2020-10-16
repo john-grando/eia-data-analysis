@@ -8,8 +8,8 @@ from pyspark.rdd import RDD
 
 class MyPySpark():
 
-    def __init__(self, master = 'local[*]'):
-        self.logger = MyLogger().logger
+    def __init__(self, master = 'local[*]', **kwargs):
+        self.logger = MyLogger(logger_name = kwargs.get('logger_name')).logger
         try:
             self.sc and self.spark
         except (AttributeError, NameError, UnboundLocalError) as e:
