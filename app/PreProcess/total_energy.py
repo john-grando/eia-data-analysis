@@ -119,10 +119,12 @@ def main(args = None):
         stamp = '')
 
     #keep data for future processing
-    total_energy_df.write.csv(
+    #use parquet because analsis and ML processes
+    #will only pull specific columns, so columnar save
+    #format is preferred.
+    total_energy_df.write.parquet(
         path = '/Processed/TotalEnergyDF',
-        mode = 'overwrite',
-        header = True)
+        mode = 'overwrite')
 
     if args.display_test:
         try:

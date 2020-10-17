@@ -44,7 +44,7 @@ class MyPySpark():
     @staticmethod
     def explain_to_file(
         df,
-        location = 'ExplainFiles',
+        location = 'app/ExplainFiles',
         description = '',
         stamp = datetime.datetime.now(),
         logger_output = False):
