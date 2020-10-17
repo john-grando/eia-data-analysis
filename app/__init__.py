@@ -4,8 +4,6 @@
 import sys, os, logging
 from logging.config import fileConfig
 
-loggers = {}
-
 py_file_path = os.path.join(
     os.path.dirname(
         os.path.abspath(__file__),
@@ -13,7 +11,14 @@ py_file_path = os.path.join(
     ".."
 )
 
+loggers = {}
+
 class MyLogger():
+    """
+    General logger for project.
+    Use 'jupyter' and 'jupyter-silent' when doing
+    jupyter notebook.
+    """
     def __init__(
         self,
         logging_file = 'logging.conf',

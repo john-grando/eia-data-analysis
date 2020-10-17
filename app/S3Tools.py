@@ -8,7 +8,7 @@ from app import MyLogger
 
 class S3Access():
     """
-    Class to handle s3 access functions and calls
+    General functions for s3 operations
     """
     def __init__(self, bucket, key, **kwargs):
         self.logger = MyLogger(logger_name = kwargs.get('logger_name')).logger
@@ -24,9 +24,10 @@ class S3Access():
         hdfs_site,
         hdfs_folder):
         """
-        sync hdfs folder with s3
+        Sync hdfs folder to s3 for backup.
 
-        All file contents will be deleted before sync upload
+        All file contents in target directory will
+        be deleted before sync upload
         """
         self.logger.info("removing previous files")
         file_list = self.get_file_list()
@@ -48,7 +49,7 @@ class S3Access():
         )
         process_error, _ = sub_process.communicate()
         if sub_process.returncode != 0:
-            self.logger.error('hdfs sync failed:\n%s', process_error)
+            self.logger.error('hdfs sync failed.  Try manually to diagnose error')
             return
         self.logger.info('hdfs sync ended')
         return

@@ -1,4 +1,5 @@
-import os, sys, re
+import os, sys, re, argparse
+import pandas as pd
 from pyspark.sql.types import *
 import pyspark.sql.functions as pysF
 
@@ -14,9 +15,34 @@ from app import MyLogger
 from app.SparkTools import MyPySpark
 from app.S3Tools import S3Access
 
+def build_parser():
+    """
+    Build argument parser.
+    """
+    parser = argparse.ArgumentParser(
+        prog = 'Total Energy Preprocess',
+        description = 'Pre-Proccesss Total Energy bulk data from EIA website')
+    parser.add_argument(
+        '--display-test',
+        '-t',
+        action = 'store_true',
+        help = 'Display sample output')
+    parser.add_argument(
+        '--s3',
+        '-s3',
+        action = 'store_true',
+        help = 'Backup output to s3')
+    return parser
+
 MySpark = None
 
-def main():
+def main(args = None):
+    """
+    Pre process raw input data and save in
+    cleansed state to /Processed directory
+    """
+    parser = build_parser()
+    args = parser.parse_args(args)
     #ensure only one sc and spark instance is running
     global MySpark
     MySpark = MySpark or MyPySpark(master = 'local[3]')
@@ -31,7 +57,7 @@ def main():
     #     )
     # )
     #remove .option('inferSchema') and add schema as second argument to .json for explicit structure
-    total_df = MySpark\
+    total_energy_df = MySpark\
         .spark\
         .read\
         .option("inferSchema", "true")\
@@ -42,9 +68,9 @@ def main():
     #also remove the 'monthly' indicator in the series name and other
     #extraneous information
     #cleanse remaining columns
-    total_df = total_df\
+    total_energy_df = total_energy_df\
         .filter(
-            total_df["f"] == 'M')\
+            total_energy_df["f"] == 'M')\
         .withColumn(
             "name",
             pysF.regexp_replace(
@@ -71,54 +97,49 @@ def main():
                     'yyyyMM').cast("timestamp")))\
         .withColumn(
             "value",
-            pysF.col("data_exploded").getItem(1))
-    total_df.printSchema()
-
-    #repartition is only necessary if total_df is being used consistently later on.
-    #same for cache. repartition number used due to heap space limitation on local machine
-    total_df.repartition(
-        "series_id")\
-        .cache()
-    yearly_sum_df = total_df\
-        .groupBy(
-            "series_id",
-            pysF.year("date"))\
-        .agg(
-            pysF.sum("value").alias("value"),
-            pysF.collect_set("name").getItem(0).alias("name"),
-            pysF.collect_set("units").getItem(0).alias("units"))\
-        .orderBy(pysF.year("date"), "series_id")
-    yearly_sum_df.printSchema()
-    yearly_sum_df.show()
-    #Test to make sure names and units do not vary with series
-    # print(yearly_sum_df.select(pysF.size("collect_set(name)")).agg(pysF.max("size(collect_set(name))")).collect()[0])
-    # print(yearly_sum_df.select(pysF.size("collect_set(units)")).agg(pysF.max("size(collect_set(units))")).collect()[0])
-    # sys.exit()
-
-    #save explain() to file
+            pysF.col("data_exploded").getItem(1))\
+        .withColumn(
+            "data",
+            pysF.concat_ws(", ", pysF.col("data_exploded")))\
+        .withColumn(
+            "childseries",
+            pysF.concat_ws(", ", pysF.col("childseries")))\
+        .drop(
+            "data_exploded",
+            "date_raw")\
+        .replace(
+            {
+                "":None,
+                "null":None
+            })
+    #save plans to ExplainFiles directory by default
     MySpark.explain_to_file(
-        df = total_df,
-        description = 'total_data_cleanse',
+        df = total_energy_df,
+        description = 'total_energy_cleanse',
         stamp = '')
 
-    MySpark.explain_to_file(
-        df = yearly_sum_df,
-        description = 'total_yearly_sum',
-        stamp = '')
-
-    yearly_sum_df.write.csv(
-        path = '/OutputFiles/total_yearly_sum_df',
+    #keep data for future processing
+    total_energy_df.write.csv(
+        path = '/Processed/TotalEnergyDF',
         mode = 'overwrite',
         header = True)
 
-    # S3O = S3Access(
-    #     bucket = 'power-plant-data',
-    #     key = 'output-files'
-    # )
-    # S3O.sync_hdfs_to_s3(
-    #     hdfs_site = 'hdfs://localhost:9000',
-    #     hdfs_folder = 'OutputFiles'
-    # )
+    if args.display_test:
+        try:
+            pd.set_option('display.max_columns', 20)
+            MySpark.logger.info("Sample:\n%sDataframe:\n%s",
+            total_energy_df.limit(10).toPandas().dtypes,
+            total_energy_df.limit(5).toPandas().head())
+        finally:
+            pd.set_option('display.max_columns', 0)
+
+    if args.s3:
+        S3O = S3Access(
+            bucket = 'power-plant-data',
+            key = 'processed')
+        S3O.sync_hdfs_to_s3(
+            hdfs_site = 'hdfs://localhost:9000',
+            hdfs_folder = 'Processed/TotalEnergyDF')
 
 if __name__ == "__main__":
     main()

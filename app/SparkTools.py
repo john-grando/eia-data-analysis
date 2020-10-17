@@ -7,7 +7,9 @@ from pyspark.sql import DataFrame
 from pyspark.rdd import RDD
 
 class MyPySpark():
-
+    """
+    General functions for pyspark operations
+    """
     def __init__(self, master = 'local[*]', **kwargs):
         self.logger = MyLogger(logger_name = kwargs.get('logger_name')).logger
         try:
@@ -18,10 +20,11 @@ class MyPySpark():
                 import findspark
                 findspark.init()
                 import pyspark
-                #set spark.driver.memory instead of executor when running in standalone
+                #set spark.driver.memory as well as spark.executor.memory when running in standalone
                 conf = pyspark\
                     .SparkConf()\
                     .set('spark.driver.memory', '6g')\
+                    .set('spark.executor.memory', '5g')\
                     .setAppName("PowerPlant")\
                     .setMaster(master)
                 self.sc = pyspark\
