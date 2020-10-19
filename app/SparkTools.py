@@ -6,12 +6,12 @@ from app import MyLogger
 from pyspark.sql import DataFrame
 from pyspark.rdd import RDD
 
-class MyPySpark():
+class MyPySpark(MyLogger):
     """
     General functions for pyspark operations
     """
     def __init__(self, master = 'local[*]', **kwargs):
-        self.logger = MyLogger(logger_name = kwargs.get('logger_name')).logger
+        super().__init__(logger_name = kwargs.get('logger_name'))
         try:
             self.sc and self.spark
         except (AttributeError, NameError, UnboundLocalError) as e:

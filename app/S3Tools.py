@@ -6,12 +6,12 @@ import boto3
 from botocore.client import ClientError
 from app import MyLogger
 
-class S3Access():
+class S3Access(MyLogger):
     """
     General functions for s3 operations
     """
     def __init__(self, bucket, key, **kwargs):
-        self.logger = MyLogger(logger_name = kwargs.get('logger_name')).logger
+        super().__init__(logger_name = kwargs.get('logger_name'))
         #instantiate aws
         self.s3_r = boto3.resource('s3')
         self.s3 = boto3.client('s3')

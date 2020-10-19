@@ -115,7 +115,7 @@ def main(args = None):
     #save plans to ExplainFiles directory by default
     MySpark.explain_to_file(
         df = total_energy_df,
-        description = 'total_energy_cleanse',
+        description = 'preprocess_total_energy',
         stamp = '')
 
     #keep data for future processing
