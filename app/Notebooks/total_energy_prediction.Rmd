@@ -13,18 +13,20 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-library(sparklyr)
 library(dplyr)
 library(tidyr)
 library(forecast)
 library(kableExtra)
 library(ggplot2)
+#library(SparkR)
+library(sparklyr)
+library(tidyverse)
 ```
 
 ```{r}
 sc <- sparklyr::spark_connect(
   master = 'local[2]', 
-  spark_home = '/usr/local/spark3')
+  spark_home = '/opt/spark') #/usr/local/spark3 or /opt/spark (depends on mach)
 total_energy_df <- sparklyr::spark_read_parquet(
   sc = sc, 
   name = 'total_energy_df', 
@@ -59,8 +61,13 @@ date_limit_df <- electricity_net_generation_df %>%
 ```
 
 ```{r}
-electricity_net_generation_df <- electricity_net_generation_df %>% 
-  select(-"units") %>% 
+#regexp_replace is not found in sparklyr, so using spark_apply
+electricity_net_generation_pivot_df <- electricity_net_generation_df %>% 
+  mutate(
+    name = regexp_replace(name, 'Cooling', '')
+  )
+
+
   sdf_pivot(
     formula = date ~ name, 
     fun.aggregate = list(value = "mean"))
