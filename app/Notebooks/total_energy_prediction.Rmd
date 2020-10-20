@@ -13,20 +13,19 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-library(dplyr)
-library(tidyr)
 library(forecast)
 library(kableExtra)
 library(ggplot2)
-#library(SparkR)
 library(sparklyr)
+library(dplyr)
+library(tidyr)
 library(tidyverse)
 ```
 
 ```{r}
 sc <- sparklyr::spark_connect(
   master = 'local[2]', 
-  spark_home = '/opt/spark') #/usr/local/spark3 or /opt/spark (depends on mach)
+  spark_home = Sys.getenv("SPARK_HOME"))
 total_energy_df <- sparklyr::spark_read_parquet(
   sc = sc, 
   name = 'total_energy_df', 
@@ -34,71 +33,205 @@ total_energy_df <- sparklyr::spark_read_parquet(
 total_energy_df <- select(total_energy_df, "date", "name", "value", "units") %>% 
   mutate(
     date = as.date(date),
-    value = as.numeric(value))
+    value = as.numeric(value)) %>% 
+  arrange(date)
 ```
 
 ```{r}
 electricity_net_generation_df <- 
   total_energy_df %>% 
-  filter(name %rlike% "(Electricity Net Generation Total.* All Sectors$|^Cooling(?!.*United States$)|^Heating(?!.*United States$))")
+  dplyr::filter(date > as.Date("1990-01-01")) %>% 
+  dplyr::filter(name %rlike% "(Electricity Net Generation From.*All Sectors$)")
+```
+
+
+```{r eval=FALSE}
+electricity_net_generation_df <- 
+  total_energy_df %>% 
+  dplyr::filter(name %rlike% "(Electricity Net Generation Total.*|^Cooling|^Heating)")
 ```
 
 ```{r}
 electricity_net_generation_df %>% 
-  filter(is.na(value) | value == '') %>% 
+  dplyr::filter(is.na(value) | value == '') %>% 
   dplyr::count(name = "null fields") %>% 
   kable('html') %>% 
   kable_styling(
     bootstrap_options = 'striped',
     font_size = 20)
+```
 
+
+```{r}
 date_limit_df <- electricity_net_generation_df %>% 
   group_by() %>% 
-  summarize(
+  dplyr::summarize(
     min_date = min(date), 
     max_date = max(date)) %>% 
-  collect()
+  sparklyr::collect()
 ```
+
 
 ```{r}
 #regexp_replace is not found in sparklyr, so using spark_apply
 electricity_net_generation_pivot_df <- electricity_net_generation_df %>% 
+  dplyr::mutate(
+    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
+    name = tolower(name)
+  ) %>% 
   mutate(
-    name = regexp_replace(name, 'Cooling', '')
-  )
-
-
+    name = regexp_replace(name, ' ', '_')
+  ) %>% 
   sdf_pivot(
     formula = date ~ name, 
     fun.aggregate = list(value = "mean"))
 
-electricity_net_generation_ts <- ts(
-  data = electricity_net_generation_df %>%  
-    arrange(date) %>% 
-    select("value") %>% 
+```
+
+```{r fig.width=12}
+electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_df %>% 
     collect() %>% 
-    pull("value"), 
+    gather(key = "id", value = 'val', -c(date))
+ggplot(
+  data = electricity_net_generation_pivot_melted_df, 
+  mapping = aes(x = date, y = val, color = id)) +
+  geom_line()
+```
+
+```{r}
+electricity_net_generation_pivot_reduced_df <- electricity_net_generation_df %>% 
+  filter(date > as.Date('2010-01-01')) %>% 
+  dplyr::mutate(
+    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
+    name = tolower(name)) %>% 
+  mutate(
+    name = regexp_replace(name, ' ', '_')
+  ) %>% 
+  mutate(
+    name = ifelse(
+      name %in% c(
+        "eng_coal", 
+        "eng_natural_gas", 
+        "eng_nuclear_electric_power"), 
+      name, 
+      "eng_other")
+  ) %>% 
+  sdf_pivot(
+    formula = date ~ name, 
+    fun.aggregate = list(value = "mean"))
+
+date_limit_reduced_df <- electricity_net_generation_pivot_reduced_df %>% 
+  group_by() %>% 
+  dplyr::summarize(
+    min_date = min(date), 
+    max_date = max(date)) %>% 
+  sparklyr::collect()
+```
+
+```{r fig.width=12}
+electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_reduced_df %>% 
+    collect() %>% 
+    gather(key = "id", value = 'val', -c(date))
+ggplot(
+  data = electricity_net_generation_pivot_melted_df, 
+  mapping = aes(x = date, y = val, color = id)) +
+  geom_line()
+```
+
+
+```{r}
+eng_coal_ts <- ts(
+  data = electricity_net_generation_pivot_reduced_df %>%  
+    arrange(date) %>% 
+    select("eng_coal") %>% 
+    collect() %>% 
+    pull("eng_coal"), 
   start = c(
-    as.numeric(format(date_limit_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_df["min_date"][[1]], "%m"))),
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
   end = c(
-    as.numeric(format(date_limit_df["max_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_df["max_date"][[1]], "%m"))),
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
   frequency = 12)
-electricity_net_generation_ts <- window(electricity_net_generation_ts, start=c(2000,1))
+
+#eng_coal_ts <- window(eng_coal_ts, start=c(2000,1))
+```
+
+
+```{r}
+autoplot(eng_coal_ts, series='original')
+ggseasonplot(eng_coal_ts, polar=TRUE)
 ```
 
 ```{r}
-autoplot(electricity_net_generation_ts, series='original')
-ggseasonplot(electricity_net_generation_ts, polar=TRUE)
-```
+eng_coal_ts %>%  stl(s.window = 24) %>% autoplot()
+ggAcf(eng_coal_ts)
+ggPacf(eng_coal_ts)
+f_xreg <- fourier(eng_coal_ts,K = 5)
+p_xreg <- matrix(
+  c(
+    electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(),
+    electricity_net_generation_pivot_reduced_df %>% select('eng_nuclear_electric_power') %>% pull()),
+  ncol=2, 
+  byrow = FALSE
+)
+#try out differencing?  it is definitely not stationary
+fit <- auto.arima(eng_coal_ts, xreg = p_xreg)
+checkresiduals(fit)
+summary(fit)
 
-```{r}
-electricity_net_generation_ts %>%  stl(s.window = 24) %>% autoplot()
-ggAcf(electricity_net_generation_ts)
-# run checkresiduals(fit) for outputs
-```
-```{r}
-#could do multivariate test with cooling demand, which is also in this data set
+#Do something like this for future values:
+predict_l <- 24
+amplifier <- 1.5
+n_amplifier <- 1.5
+tst <- tail(
+  electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(), predict_l)
+new_tst <- tst * tst[1] / tail(tst,1) * seq(from = 1, to = amplifier, length.out = predict_l)
+new_n_tst <- tail(electricity_net_generation_pivot_reduced_df %>% select('eng_nuclear_electric_power') %>% pull(), predict_l) * seq(from = 1, to = n_amplifier, length.out = predict_l)
+new_p_xreg <- matrix(
+  c(
+    new_tst,
+    new_n_tst),
+  ncol=2, 
+  byrow = FALSE
+)
+
+fit %>% forecast(h = predict_l, xreg=new_p_xreg) %>% autoplot() + 
+  autolayer(
+    ts(
+      c(electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull()),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas') +
+  autolayer(
+    ts(
+      new_tst,
+      start = c(
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas prediction'
+  ) +
+  autolayer(
+    ts(
+      c(electricity_net_generation_pivot_reduced_df %>% select('eng_nuclear_electric_power') %>% pull()),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear') +
+  autolayer(
+    ts(
+      new_n_tst,
+      start = c(
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear prediction'
+  ) +
+  coord_cartesian(xlim=c(2010,2025), ylim = c(0,2.5e+05))
+  
 ```
 

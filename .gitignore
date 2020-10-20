@@ -1,9 +1,12 @@
 *.pyc
 *.crc
 app/logs/*.log
+app/Notebooks/**/*.log
 EIAElec/*.json
 EIATotal/*.json
 WeatherCSV/*.csv
 tmp/*
 !tmp/*.py
 app/Notebooks/.ipynb_checkpoints/*
+.Rproj.user
+*.Rhistory
