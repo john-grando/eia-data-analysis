@@ -1,0 +1,392 @@
+---
+title: "tscv_edit"
+author: "John Grando"
+date: "October 21, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(forecast)
+```
+
+
+```{r}
+load("total_energy_coal_data.RData")
+far2 <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h, xreg=xreg)}
+(e <- tsCV(eng_coal_ts, far2, h=1, xreg=p_xreg))
+```
+
+```{r}
+tsCV_test <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, ...) {
+  y <- as.ts(y)
+  n <- length(y)
+  e <- ts(matrix(NA_real_, nrow = n, ncol = h))
+  if(initial >= n) stop("initial period too long")
+  tsp(e) <- tsp(y)
+  if (!is.null(xreg)) {
+    # Make xreg a ts object to allow easy subsetting later
+    xreg <- ts(as.matrix(xreg))
+    if(NROW(xreg) != length(y))
+      stop("xreg must be of the same size as y")
+    tsp(xreg) <- tsp(y)
+  }
+  #MISSING BRACKETS CAUSING ERROR, CHECK FOR WINDOW LATER
+  if (is.null(window))
+    indx <- seq(1+initial, n - 1L)
+  else
+    indx <- seq(window+initial, n - 1L, by = 1L)
+  for (i in indx) {
+    y_subset <- subset(
+      y,
+      start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
+      ),
+      end = i
+    )
+    if (is.null(xreg)) {
+      fc <- try(suppressWarnings(
+        forecastfunction(y_subset, h = h, ...)
+        ), silent = TRUE)
+    }
+    else { #SYNTACTIC ISSUE  MOVE ONE LINE ABOVE
+      xreg_subset <- as.matrix(subset(
+        xreg,
+        start = ifelse(is.null(window), 1L,
+                ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
+      ))
+      fc <- try(suppressWarnings(
+        forecastfunction(y_subset, h = h, xreg = xreg_subset, ...)
+        ), silent = TRUE)
+    }
+    if (!is.element("try-error", class(fc))) {
+      e[i, ] <- y[i + (1:h)] - fc$mean
+    }
+  }
+  if (h == 1) {
+    return(e[, 1L])
+  } else {
+    colnames(e) <- paste("h=", 1:h, sep = "")
+    return(e)
+  }
+}
+```
+
+```{r}
+(e <- tsCV_test(eng_coal_ts, far2, h=1, xreg=p_xreg))
+```
+
+```{r}
+y <- eng_coal_ts
+h = 2
+xreg = p_xreg
+initial = 0
+window = NULL
+forecastfunction = far2
+```
+
+
+```{r}
+y <- as.ts(y)
+n <- length(y)
+e <- ts(matrix(NA_real_, nrow = n, ncol = h))
+if(initial >= n) stop("initial period too long")
+tsp(e) <- tsp(y)
+if (!is.null(xreg)) {
+  # Make xreg a ts object to allow easy subsetting later
+  xreg <- ts(as.matrix(xreg))
+  if(NROW(xreg) != length(y))
+    stop("xreg must be of the same size as y")
+  tsp(xreg) <- tsp(y)
+}
+if (is.null(window)) {
+  indx <- seq(1+initial, n - 1L)
+} else {
+  indx <- seq(window+initial, n - 1L, by = 1L)
+}
+```
+
+For loop with warning suppressed and ... remove from function
+
+```{r}
+i = 20
+y_subset <- subset(
+    y,
+    start = ifelse(is.null(window), 1L,
+            ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
+    ),
+    end = i
+  )
+  if (is.null(xreg)) {
+    fc <- try(suppressWarnings(
+      forecastfunction(y_subset, h = h, ...)
+      ), silent = TRUE)
+  } else {
+    xreg_subset <- as.matrix(subset(
+      xreg,
+      start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
+    ))
+    fc <- forecastfunction(y_subset, h = h, xreg = xreg_subset)
+  }
+  if (!is.element("try-error", class(fc))) {
+    e[i, ] <- y[i + (1:h)] - fc$mean
+  }
+```
+
+
+which is not obvious, if we want to use xreg in the prediction we have to modify the forecast function.  But we need to identify a new parameter to identify the training xreg argument, otherwise, the prediction xreg argument (of length h) would be used.
+
+the subset of xreg_subset does not have an end, thus returning a matrix with [i:lenght(xreg)].  This can be fixed by fixed by adding the end as i. Also, subset does not behave well with multidimensional arrays so direct slicing is used.
+
+Also, for each h, a different function should be fit so the function can return maximum results
+
+```{r}
+#interval from y_subset
+#start = ifelse(is.null(window), 1L,
+#        ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
+#prediction_xreg = xreg[start:h,]
+
+prediction_xreg <- as.matrix(subset(
+      xreg,
+      start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window"))),
+      end = h
+    ))
+
+#if (is.null(xreg)) {
+#    fc <- try(suppressWarnings(
+#      forecastfunction(y_subset, h = h, ...)
+#      ), silent = TRUE)
+#  } else {
+    xreg_subset <- as.matrix(subset(
+      xreg,
+      start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window"))),
+      end = i
+    ))
+#}
+
+far2 <- function(x, h, px, xr){forecast(Arima(x, order=c(2,0,0), xreg=xr), h=h, xreg=px)}
+forecastfunction <- far2
+fc <- forecastfunction(x = y_subset, h = h, px=prediction_xreg, xr=xreg_subset)
+if (!is.element("try-error", class(fc))) {
+    e[i, ] <- y[i + (1:h)] - fc$mean
+}
+```
+
+fixed function
+
+```{r}
+#far2 <- function(x, h, xr=NULL, px=NULL){forecast(Arima(x, order=c(2,0,0), xreg=xr), h=h, xreg=px)}
+#forecastfunction <- far2
+#xreg=NULL
+tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, console_print=NULL, ...) {
+  y <- as.ts(y)
+  n <- length(y)
+  e <- ts(matrix(NA_real_, nrow = n, ncol = h))
+  if(initial >= n) stop("initial period too long")
+  tsp(e) <- tsp(y)
+  if (!is.null(xreg)) {
+    # Make xreg a ts object to allow easy subsetting later
+    #### Removed ts() since using subset() on matrices is difficut (multiple xreg)
+    xreg <- as.matrix(xreg)
+    if(NROW(xreg) != length(y))
+      stop("xreg must be of the same size as y")
+    tsp(xreg) <- tsp(y)
+  }
+  #MISSING BRACKETS CAUSING ERROR, CHECK FOR WINDOW LATER
+  if (is.null(window)) {
+    indx <- seq(1+initial, n - 1L)
+  } else {
+    indx <- seq(window+initial, n - 1L, by = 1L)
+  }
+ for (i in indx) {
+    y_subset <- subset(
+      y,
+      start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
+      ),
+      end = i
+    )
+    if (is.null(xreg)) {
+      fc <- try(suppressWarnings(
+        forecastfunction(y_subset, h = h, ...)
+        ), silent = TRUE)
+    f_mean = if (!is.element("try-error", class(fc))){fc$mean}
+    } else { #SYNTACTIC ISSUE  MOVE ONE LINE ABOVE
+      start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
+      ####
+      end = i
+      ####
+      xreg_subset <- matrix(xreg[start:end,], ncol = ncol(xreg))
+      #process h differently due to errors that can happen near the end of the index
+      #xreg_prediction <- try(matrix(xreg[i:(i+h-1),], ncol = ncol(xreg)), silent = TRUE)
+      make_prediction_m <- function(h, i) {try(matrix(xreg[i:(i+h-1),], ncol = ncol(xreg)), silent = TRUE)}
+      prediction_l <- lapply(1:h, make_prediction_m, i=i)
+      fc_fun <- function(px, y_subset, xr, ...) {
+          try(suppressWarnings(
+            forecastfunction(y_subset, h = nrow(px), xr = xreg_subset, px = px, ...)
+          ), silent = TRUE)
+      }
+      fc_l <- lapply(prediction_l, fc_fun, y_subset=y_subset, xr=xreg_subset)
+      f_mean_l <- lapply(fc_l, function(x){if (!is.element("try-error", class(x))){x$mean}})
+      max_h <- which.max(lapply(f_mean_l, length))
+      f_mean <- f_mean_l[[max_h]]
+    }
+    #if (!is.element("try-error", class(fc)) & !(is.element("try-error", class(xreg_prediction)))) {
+    if (!is.null(f_mean)) {
+      tmp_result <- as.vector(y[i + (1:max_h)] - f_mean)
+      result <- c(
+        tmp_result, 
+        rep(NA,h-length(tmp_result)))
+      e[i, ] <- result
+      #if(!is.null(console_print)){
+      #  pe[i, ] <- 100 * (y[i + (1:h)] - fc$mean[1:h]) / y[i + (1:h)] 
+      #if (i %% 100 == 0){cat(paste(i,"\n", sep = ' '))}
+      #cat(".")
+      #}
+    }
+  }
+  if (h == 1) {
+    return(e[, 1L])
+  } else {
+    colnames(e) <- paste("h=", 1:h, sep = "")
+    return(e)
+  }
+}
+```
+
+```{r}
+# No for loops used, should speed up the process.
+tsCV_v2_red <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, console_print=NULL, ...) {
+  y <- as.ts(y)
+  n <- length(y)
+  e <- ts(matrix(NA_real_, nrow = n, ncol = h))
+  if(initial >= n) stop("initial period too long")
+  tsp(e) <- tsp(y)
+  if (!is.null(xreg)) {
+    # Make xreg a ts object to allow easy subsetting later
+    #### Removed ts() since using subset() on matrices is difficut (multiple xreg)
+    xreg <- as.matrix(xreg)
+    if(NROW(xreg) != length(y))
+      stop("xreg must be of the same size as y")
+    tsp(xreg) <- tsp(y)
+  }
+  #MISSING BRACKETS CAUSING ERROR, CHECK FOR WINDOW LATER
+  if (is.null(window)) {
+    indx <- seq(1+initial, n - 1L)
+  } else {
+    indx <- seq(window+initial, n - 1L, by = 1L)
+  }
+  y_subset_fun <- function(i){
+    subset(
+      y,
+      start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
+      ),
+      end = i
+    )
+  }
+  y_subset_l <- lapply(indx, y_subset_fun)
+  if (is.null(xreg)) {
+    fc_fun <- function(y_subset, h=h){try(suppressWarnings(
+        forecastfunction(y_subset, h = h)
+        ), silent = TRUE)}
+    fc_l <- lapply(y_subset_l, fc_fun, h=h)
+    f_mean_l <- lapply(fc_l, function(x){if (!is.element("try-error", class(x))){x$mean}})
+  } else {
+    xreg_subset_fun <- function(i){
+      x_start = ifelse(is.null(window), 1L,
+              ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
+      ####
+      x_end = i
+      ####
+      matrix(xreg[x_start:x_end,], ncol = ncol(xreg))
+    }
+    #subset xreg for each indx
+    xreg_subset_l <- lapply(indx, xreg_subset_fun)
+    #subset xreg predictor for each h per each indx
+    prediction_per_h_subset <- function(i, h){
+        lapply(
+          1:h, 
+          function(x, i){
+            try(matrix(xreg[i:(i+x-1),], ncol = ncol(xreg)), silent = TRUE)
+          }, 
+          i=i)
+    }
+    #make list of xreg predictors per indx
+    prediction_l <- lapply(indx, prediction_per_h_subset, h=h)
+    #run function and return list of xreg predictors per indx
+    fc_fun <- function(i, y_subset_l, prediction_l, xreg_subset_l, ...) {
+      print(i)
+      print(prediction)
+      prediction <- prediction_l[[i]]
+      y_subset <- y_subset_l[[i]]
+      xr = xreg_subset_l[[i]]
+      lapply(
+        prediction[1:h],
+        function(px){
+          try(suppressWarnings(
+            forecastfunction(px = px, x = y_subset, h = nrow(px), xr = xr, ...)
+          ), silent = TRUE)
+        })
+    }
+    fc_l <- lapply(indx, fc_fun, y_subset_l=y_subset_l, prediction_l=prediction_l, xreg_subset_l=xreg_subset_l)
+    #extract means from each predictor subset of indx
+    f_mean_long_l <- lapply(
+        fc_l, 
+        function(x){
+          lapply(
+            1:h,
+            function(x2){
+              if (!is.element("try-error", class(x[[x2]]))){x[[x2]]$mean}}
+          )
+        })
+    #find longest arrary of each subset and use that one for the indx
+    max_l <- lapply(f_mean_long_l, function(x){which.max(lapply(x, length))})
+    f_mean_l <- lapply(indx, function(x){f_mean_long_l[[x]][[max_l[[x]][[1]]]]})
+  }
+  #process errors
+  errors_fun <- function(i){
+    f_tmp <- c(
+      f_mean_l[[i]],
+      rep(NA,h-length(f_mean_l[[i]]))
+    )
+    tmp_result <- as.vector(y[i + (1:max_h)] - f_tmp)
+    result <- c(
+      tmp_result, 
+      rep(NA,h-length(tmp_result)))
+  }
+  errors_l <- lapply(indx, errors_fun)
+  lapply(indx, function(x){e[x,] <<- errors_l[[x]]})
+  if (h == 1) {
+    return(e[, 1L])
+  } else {
+    colnames(e) <- paste("h=", 1:h, sep = "")
+    return(e)
+  }
+}
+```
+
+
+```{r}
+far2 <- function(px, x, h, xr){forecast(Arima(x, order=c(2,0,0), xreg=xr), h=h, xreg=px)}
+far2 <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h)}
+forecastfunction <- far2
+
+e1 <- tsCV(eng_coal_ts, far2, h=12)
+e1
+e2 <- tsCV_v2(eng_coal_ts, far2, h=12, xreg=p_xreg)
+e2
+e3 <- tsCV_v2_red(eng_coal_ts, far2, h=12, xreg=p_xreg, window = 10)
+e3
+
+# check that prediction_l is pulling correct xregs, with window function too
+# check initial and window work as well
+```
+

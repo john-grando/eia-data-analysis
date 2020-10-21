@@ -1,7 +1,8 @@
 *.pyc
 *.crc
 app/logs/*.log
-app/Notebooks/**/*.log
+app/Notebooks/**/*
+!app/Notebooks/**/*.txt
 EIAElec/*.json
 EIATotal/*.json
 WeatherCSV/*.csv
