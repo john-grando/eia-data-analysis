@@ -13,13 +13,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-library(forecast)
+library(tidyverse)
+library(RColorBrewer)
 library(kableExtra)
+library(gridExtra)
+library(forecast)
 library(ggplot2)
 library(sparklyr)
 library(dplyr)
 library(tidyr)
-library(tidyverse)
 ```
 
 ```{r}
@@ -30,7 +32,12 @@ total_energy_df <- sparklyr::spark_read_parquet(
   sc = sc, 
   name = 'total_energy_df', 
   path = "hdfs://localhost:9000/Processed/TotalEnergyDF")
-total_energy_df <- select(total_energy_df, "date", "name", "value", "units") %>% 
+total_energy_df <- select(
+    total_energy_df, 
+    "date", 
+    "name", 
+    "value", 
+    "units") %>% 
   mutate(
     date = as.date(date),
     value = as.numeric(value)) %>% 
@@ -38,26 +45,20 @@ total_energy_df <- select(total_energy_df, "date", "name", "value", "units") %>%
 ```
 
 ```{r}
-electricity_net_generation_df <- 
-  total_energy_df %>% 
+electricity_net_generation_df <- total_energy_df %>% 
   dplyr::filter(date > as.Date("1990-01-01")) %>% 
   dplyr::filter(name %rlike% "(Electricity Net Generation From.*All Sectors$)")
 ```
 
-
 ```{r eval=FALSE}
-electricity_net_generation_df <- 
-  total_energy_df %>% 
-  dplyr::filter(name %rlike% "(Electricity Net Generation Total.*|^Cooling|^Heating)")
-```
-
-```{r}
 electricity_net_generation_df %>% 
   dplyr::filter(is.na(value) | value == '') %>% 
   dplyr::count(name = "null fields") %>% 
   kable('html') %>% 
   kable_styling(
     bootstrap_options = 'striped',
+    full_width = FALSE,
+    position = "center",
     font_size = 20)
 ```
 
@@ -73,7 +74,6 @@ date_limit_df <- electricity_net_generation_df %>%
 
 
 ```{r}
-#regexp_replace is not found in sparklyr, so using spark_apply
 electricity_net_generation_pivot_df <- electricity_net_generation_df %>% 
   dplyr::mutate(
     name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
@@ -89,13 +89,30 @@ electricity_net_generation_pivot_df <- electricity_net_generation_df %>%
 ```
 
 ```{r fig.width=12}
+color_values <- colorspace::diverge_hcl(n = 12, c = 100, l = c(20,90), power = 1)
+
 electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_df %>% 
     collect() %>% 
     gather(key = "id", value = 'val', -c(date))
+
+plot_theme <- theme(plot.title = element_text(hjust = 0.5, size = 25),
+        plot.subtitle = element_text(hjust = 0.5, size = 14),
+        strip.text = element_text(size = 20),
+        plot.background = element_rect(fill = "lightgrey"), 
+        panel.background = element_rect(fill = "white"), 
+        panel.grid.major.x = element_line(color = "lightgrey"), 
+        panel.grid.major.y = element_line(color = "lightgrey"), 
+        axis.text = element_text(size=14, color = "grey1"), 
+        axis.title = element_text(size=16, color = "grey1"))
+
 ggplot(
   data = electricity_net_generation_pivot_melted_df, 
   mapping = aes(x = date, y = val, color = id)) +
-  geom_line()
+  geom_line() +
+  scale_color_manual(values = color_values) +
+  labs(x = "Date", y = "Million kWh") +
+  ggtitle("Electricity Net Generation") +
+  plot_theme
 ```
 
 ```{r}
@@ -135,7 +152,11 @@ electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_r
 ggplot(
   data = electricity_net_generation_pivot_melted_df, 
   mapping = aes(x = date, y = val, color = id)) +
-  geom_line()
+  geom_line() +
+  scale_color_manual(values = color_values) +
+  labs(x = "Date", y = "Million kWh") +
+  ggtitle("Electricity Net Generation - Reduced Categories") +
+  plot_theme
 ```
 
 
@@ -153,21 +174,36 @@ eng_coal_ts <- ts(
     as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
     as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
   frequency = 12)
+```
 
-#eng_coal_ts <- window(eng_coal_ts, start=c(2000,1))
+```{r fig.width=12}
+ggseasonplot(eng_coal_ts, polar=TRUE) +
+  scale_color_manual(values=color_values) +
+  ggtitle("Seasonal Coal Generation") +
+  plot_theme
+```
+
+```{r fig.width=12}
+autoplot(eng_coal_ts, series='original') + 
+  labs(x = "Year", y = "Million kWh") +
+  ggtitle("Electricity Net Generation From Coal") +
+  scale_color_manual(values=color_values) +
+  plot_theme
+```
+
+```{r fig.width=12}
+acf_plot <- ggAcf(eng_coal_ts) + 
+  plot_theme +
+  ggtitle("ACF")
+pacf_plot <- ggPacf(eng_coal_ts) +
+  plot_theme +
+  ggtitle("PACF")
+grid.arrange(acf_plot, pacf_plot, ncol=2)
 ```
 
 
 ```{r}
-autoplot(eng_coal_ts, series='original')
-ggseasonplot(eng_coal_ts, polar=TRUE)
-```
-
-```{r}
-eng_coal_ts %>%  stl(s.window = 24) %>% autoplot()
-ggAcf(eng_coal_ts)
-ggPacf(eng_coal_ts)
-f_xreg <- fourier(eng_coal_ts,K = 5)
+#f_xreg <- fourier(eng_coal_ts,K = 5)
 p_xreg <- matrix(
   c(
     electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(),
@@ -175,15 +211,23 @@ p_xreg <- matrix(
   ncol=2, 
   byrow = FALSE
 )
+
+#export for hyperparameters
+save(eng_coal_ts, p_xreg, file = paste("../RFiles/total_energy_coal_data.RData", sep="/"))
+
 #try out differencing?  it is definitely not stationary
 fit <- auto.arima(eng_coal_ts, xreg = p_xreg)
+
 checkresiduals(fit)
 summary(fit)
+```
 
-#Do something like this for future values:
+```{r fig.width=12}
+#Adjust future predictors
 predict_l <- 24
 amplifier <- 1.5
 n_amplifier <- 1.5
+
 tst <- tail(
   electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(), predict_l)
 new_tst <- tst * tst[1] / tail(tst,1) * seq(from = 1, to = amplifier, length.out = predict_l)
@@ -196,7 +240,12 @@ new_p_xreg <- matrix(
   byrow = FALSE
 )
 
-fit %>% forecast(h = predict_l, xreg=new_p_xreg) %>% autoplot() + 
+train_fit <- forecast(
+    fit,
+    h = predict_l, 
+    xreg=new_p_xreg)
+
+autoplot(train_fit) +
   autolayer(
     ts(
       c(electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull()),
@@ -231,7 +280,12 @@ fit %>% forecast(h = predict_l, xreg=new_p_xreg) %>% autoplot() +
       frequency = 12),
     series = 'nuclear prediction'
   ) +
-  coord_cartesian(xlim=c(2010,2025), ylim = c(0,2.5e+05))
-  
+  coord_cartesian(xlim=c(2010,2025), ylim = c(0,2.5e+05)) +
+  scale_color_manual(values=color_values) +
+  labs(x = "Date", y = "Million kWh") +
+  ggtitle(
+    as.character(train_fit), 
+    subtitle = paste("\nAmplification (NG): ", amplifier, ", Amplification (Nuclear): ", n_amplifier)) +
+  plot_theme
 ```
 
