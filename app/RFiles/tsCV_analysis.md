@@ -9,27 +9,49 @@ output:
 
 Recently, I have found a use tsCV from the forecast package.  However, when using the `xreg` option I encountered a few issues and decided to look into them.  This report summarizes the findings and proposed fixes for this function.  First, a great thank you to Rob J Hyndman and George Athanasopoulos for providing such a wonderful resource that is freely available.
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+
+
+
+```r
+library(forecast)
 ```
 
-```{r}
-library(forecast)
+```
+## Registered S3 method overwritten by 'quantmod':
+##   method            from
+##   as.zoo.data.frame zoo
 ```
 
 For the practice data set, I have loaded a time series object and xreg matrix.  For more details on the subject matter, please refer to ().  For these purposes, it is only necessary to note that two predictor variables are provided in the `p_xreg` object.
 
 If we try to use the tsCV function out of the box using xregs, we get an output of `NA` values
 
-```{r}
+
+```r
 load("total_energy_coal_data.RData")
 my_fun <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h, xreg=xreg)}
 (e <- tsCV(eng_coal_ts, my_fun, h=1, xreg=p_xreg))
 ```
 
+```
+##      Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+## 2010      NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2011  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2012  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2013  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2014  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2015  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2016  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2017  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2018  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2019  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA  NA
+## 2020  NA  NA  NA  NA  NA  NA
+```
+
 To debug this problem, we can step through the function.  First, we will set the initial parameters
 
-```{r}
+
+```r
 y <- eng_coal_ts
 h = 2
 xreg = p_xreg
@@ -40,7 +62,8 @@ forecastfunction = my_fun
 
 
 
-```{r}
+
+```r
 y <- as.ts(y)
 n <- length(y)
 e <- ts(matrix(NA_real_, nrow = n, ncol = h))
@@ -62,7 +85,8 @@ if (is.null(window)) {
 
 Eventually we get to a for loop that contains the error.  Here we have set the looped value arbitrarily to 20.
 
-```{r error=TRUE}
+
+```r
 i = 20
 y_subset <- subset(
     y,
@@ -86,6 +110,10 @@ y_subset <- subset(
     fc <- forecastfunction(y_subset, h = h, xreg = xreg_subset)
   }
 ```
+
+```
+## Error in forecastfunction(y_subset, h = h, xreg = xreg_subset): unused argument (xreg = xreg_subset)
+```
 The error is not immediately obvious.  If we want to use `xreg` in the training, then we also need to specify an `xreg` in the prediction forecast which is the same length as `h`.  Therefore, we need to identify a new parameter to identify the prediction `xreg` argument.
 
 As we debug this operation, there are a few other issues that arise:
@@ -94,7 +122,8 @@ As we debug this operation, there are a few other issues that arise:
 
 3.  If we want to get maximum results for each prediction of `h` for each index location, a different function should be fit for each `h`.
 
-```{r}
+
+```r
 #interval from y_subset
 #start = ifelse(is.null(window), 1L,
 #        ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
@@ -122,9 +151,15 @@ if (!is.element("try-error", class(fc))) {
 }
 print(e[20,])
 ```
+
+```
+##   Series 1   Series 2 
+##  -7295.528 -24637.935
+```
 The changes above, as well as a few formatting fixes (which may be due to an updated R version), have been applied to the function below
 
-```{r}
+
+```r
 tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, console_print=NULL, ...) {
   y <- as.ts(y)
   n <- length(y)
@@ -205,7 +240,8 @@ tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
 
 Additionally, the new tsCV function has been vectorized, which removes all uses of for loops.  This should provide better performance for larger data sets.
 
-```{r}
+
+```r
 tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, ...) {
   y <- as.ts(y)
   n <- length(y)
@@ -320,7 +356,8 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
 
 Test using no `xreg`.  This allows the original function to be compared to the two new options
 
-```{r}
+
+```r
 my_fun <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h)}
 
 e1_start <- proc.time()
@@ -333,14 +370,43 @@ e3_start <- proc.time()
 e3 <- tsCV_v2_vectorized(eng_coal_ts, my_fun, h=3)
 fixed_vector_duration <- proc.time() - e3_start
 all.equal(e1,e2, e2, tolerance=0.1)
+```
+
+```
+## [1] TRUE
+```
+
+```r
 original_function_duration
+```
+
+```
+##    user  system elapsed 
+##   1.672   0.012   1.685
+```
+
+```r
 fixed_duration
+```
+
+```
+##    user  system elapsed 
+##   1.603   0.000   1.604
+```
+
+```r
 fixed_vector_duration
+```
+
+```
+##    user  system elapsed 
+##   1.607   0.004   1.611
 ```
 
 Test using `xreg`.  Note, the original function could not be compared, as it provides erroneous output
 
-```{r}
+
+```r
 my_fun <- function(px, x, h, xr){forecast(Arima(x, order=c(2,0,0), xreg=xr), h=h, xreg=px)}
 e2xr_start <- proc.time()
 e2xr <- tsCV_v2(eng_coal_ts, my_fun, h=3, xreg=p_xreg)
@@ -349,7 +415,27 @@ e3xr_start <- proc.time()
 e3xr <- tsCV_v2_vectorized(eng_coal_ts, my_fun, h=3, xreg=p_xreg)
 fixed_vector_duration <- proc.time() - e3xr_start
 all.equal(e2xr, e2xr, tolerance=0.1)
+```
+
+```
+## [1] TRUE
+```
+
+```r
 fixed_duration
+```
+
+```
+##    user  system elapsed 
+##   9.411   0.004   9.417
+```
+
+```r
 fixed_vector_duration
+```
+
+```
+##    user  system elapsed 
+##  10.005   0.000  10.007
 ```
 
