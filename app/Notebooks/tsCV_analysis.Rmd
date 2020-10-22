@@ -22,7 +22,7 @@ For the practice data set, I have loaded a time series object and xreg matrix.  
 If we try to use the tsCV function out of the box using xregs, we get an output of `NA` values
 
 ```{r}
-my_file <- "https://github.com/john-grando/eia-data-analysis/blob/master/app/RFiles/total_energy_coal_data.RData?raw=true"
+my_file <- "https://github.com/john-grando/eia-data-analysis/blob/master/app/RFiles/Data/total_energy_coal_data.RData?raw=true"
 load(url(my_file))
 my_fun <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h, xreg=xreg)}
 (e <- tsCV(eng_coal_ts, my_fun, h=1, xreg=p_xreg))

@@ -16,19 +16,14 @@ Recently, I have found a use tsCV from the forecast package.  However, when usin
 library(forecast)
 ```
 
-```
-## Registered S3 method overwritten by 'quantmod':
-##   method            from
-##   as.zoo.data.frame zoo
-```
-
-For the practice data set, I have loaded a time series object and xreg matrix.  For more details on the subject matter, please refer to ().  For these purposes, it is only necessary to note that two predictor variables are provided in the `p_xreg` object.
+For the practice data set, I have loaded a time series object and xreg matrix.  For more details on the subject matter, please refer to my [EIA Data Analysis Project](https://github.com/john-grando/eia-data-analysis).  For these purposes, it is only necessary to note that two predictor variables are provided in the `p_xreg` object.
 
 If we try to use the tsCV function out of the box using xregs, we get an output of `NA` values
 
 
 ```r
-load("total_energy_coal_data.RData")
+my_file <- "https://github.com/john-grando/eia-data-analysis/blob/master/app/RFiles/Data/total_energy_coal_data.RData?raw=true"
+load(url(my_file))
 my_fun <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h, xreg=xreg)}
 (e <- tsCV(eng_coal_ts, my_fun, h=1, xreg=p_xreg))
 ```
@@ -59,8 +54,6 @@ initial = 0
 window = NULL
 forecastfunction = my_fun
 ```
-
-
 
 
 ```r
@@ -167,14 +160,11 @@ tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
   if(initial >= n) stop("initial period too long")
   tsp(e) <- tsp(y)
   if (!is.null(xreg)) {
-    # Make xreg a ts object to allow easy subsetting later
-    #### Removed ts() since using subset() on matrices is difficut (multiple xreg)
     xreg <- as.matrix(xreg)
     if(NROW(xreg) != length(y))
       stop("xreg must be of the same size as y")
     tsp(xreg) <- tsp(y)
   }
-  #MISSING BRACKETS CAUSING ERROR, CHECK FOR WINDOW LATER
   if (is.null(window)) {
     indx <- seq(1+initial, n - 1L)
   } else {
@@ -194,15 +184,12 @@ tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
         ), silent = TRUE)
     f_mean <- if (!is.element("try-error", class(fc))){fc$mean}
     max_h <- h
-    } else { #SYNTACTIC ISSUE  MOVE ONE LINE ABOVE
+    } else {
       start = ifelse(is.null(window), 1L,
               ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
-      ####
       end = i
-      ####
       xreg_subset <- matrix(xreg[start:end,], ncol = ncol(xreg))
-      #process h differently due to errors that can happen near the end of the index
-      #xreg_prediction <- try(matrix(xreg[i:(i+h-1),], ncol = ncol(xreg)), silent = TRUE)
+      #process each h separately due to errors that can happen near the end of the index
       make_prediction_m <- function(h, i) {try(matrix(xreg[i:(i+h-1),], ncol = ncol(xreg)), silent = TRUE)}
       prediction_l <- lapply(1:h, make_prediction_m, i=i)
       fc_fun <- function(px, y_subset, xr, ...) {
@@ -215,18 +202,12 @@ tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
       max_h <- which.max(lapply(f_mean_l, length))
       f_mean <- f_mean_l[[max_h]]
     }
-    #if (!is.element("try-error", class(fc)) & !(is.element("try-error", class(xreg_prediction)))) {
     if (!is.null(f_mean)) {
       tmp_result <- as.vector(y[i + (1:max_h)] - f_mean)
       result <- c(
         tmp_result, 
         rep(NA,h-length(tmp_result)))
       e[i, ] <- result
-      #if(!is.null(console_print)){
-      #  pe[i, ] <- 100 * (y[i + (1:h)] - fc$mean[1:h]) / y[i + (1:h)] 
-      #if (i %% 100 == 0){cat(paste(i,"\n", sep = ' '))}
-      #cat(".")
-      #}
     }
   }
   if (h == 1) {
@@ -249,8 +230,6 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
   if(initial >= n) stop("initial period too long")
   tsp(e) <- tsp(y)
   if (!is.null(xreg)) {
-    # Make xreg a ts object to allow easy subsetting later
-    #### Removed ts() since using subset() on matrices is difficut (multiple xreg)
     xreg <- as.matrix(xreg)
     if(NROW(xreg) != length(y))
       stop("xreg must be of the same size as y")
@@ -282,9 +261,7 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     xreg_subset_fun <- function(i){
       x_start = ifelse(is.null(window), 1L,
               ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
-      ####
       x_end = i
-      ####
       matrix(xreg[x_start:x_end,], ncol = ncol(xreg))
     }
     #subset xreg for each indx
@@ -382,7 +359,7 @@ original_function_duration
 
 ```
 ##    user  system elapsed 
-##   1.672   0.012   1.685
+##   1.259   0.000   1.260
 ```
 
 ```r
@@ -391,7 +368,7 @@ fixed_duration
 
 ```
 ##    user  system elapsed 
-##   1.603   0.000   1.604
+##   1.318   0.004   1.322
 ```
 
 ```r
@@ -400,7 +377,7 @@ fixed_vector_duration
 
 ```
 ##    user  system elapsed 
-##   1.607   0.004   1.611
+##   1.355   0.000   1.356
 ```
 
 Test using `xreg`.  Note, the original function could not be compared, as it provides erroneous output
@@ -427,7 +404,7 @@ fixed_duration
 
 ```
 ##    user  system elapsed 
-##   9.411   0.004   9.417
+##   8.090   0.012   8.106
 ```
 
 ```r
@@ -436,6 +413,6 @@ fixed_vector_duration
 
 ```
 ##    user  system elapsed 
-##  10.005   0.000  10.007
+##   8.111   0.000   8.114
 ```
 
