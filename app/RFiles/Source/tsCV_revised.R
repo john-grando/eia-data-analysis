@@ -43,7 +43,7 @@ my_tsCV <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
           forecastfunction(y_subset, h = nrow(px), xr = xreg_subset, px = px, ...)
         ), silent = TRUE)
       }
-      fc_l <- lapply(prediction_l, fc_fun, y_subset=y_subset, xr=xreg_subset)
+      fc_l <- lapply(prediction_l, fc_fun, y_subset=y_subset, xr=xreg_subset, ...)
       f_mean_l <- lapply(fc_l, function(x){if (!is.element("try-error", class(x))){x$mean}})
       max_h <- which.max(lapply(f_mean_l, length))
       f_mean <- f_mean_l[[max_h]]
@@ -133,7 +133,7 @@ my_tsCV_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     }
     #From this point forward, process the lists using their order, which is different
     #than the raw indx due to window and initial inputs
-    fc_l <- lapply(1:length(indx), fc_fun, y_subset_l=y_subset_l, prediction_l=prediction_l, xreg_subset_l=xreg_subset_l)
+    fc_l <- lapply(1:length(indx), fc_fun, y_subset_l=y_subset_l, prediction_l=prediction_l, xreg_subset_l=xreg_subset_l, ...)
     #extract means from each predictor subset of indx
     f_mean_long_l <- lapply(
       fc_l, 
