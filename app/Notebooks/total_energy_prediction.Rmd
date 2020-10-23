@@ -1,5 +1,5 @@
 ---
-title: "Total Energy"
+title: "U.S. Total Electrical Energy Generation From Fuel Sources"
 author: "John Grando"
 date: "October 19, 2020"
 output: 
@@ -8,21 +8,25 @@ output:
   
 ---
 
+In this analysis, we take a look at the aggregated U.S. net electrical generation, and how that power is produced.  The preliminary analysis will show the breakdown of various fuel sources and then we will move into a quick forecast of coal consumption within the next few years.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
-library(tidyverse)
-library(RColorBrewer)
-library(kableExtra)
-library(gridExtra)
-library(forecast)
-library(ggplot2)
-library(sparklyr)
-library(dplyr)
-library(tidyr)
+```{r warning=FALSE}
+suppressWarnings(suppressMessages(library(tidyverse)))
+suppressWarnings(suppressMessages(library(RColorBrewer)))
+suppressWarnings(suppressMessages(library(kableExtra)))
+suppressWarnings(suppressMessages(library(gridExtra)))
+suppressWarnings(suppressMessages(library(forecast)))
+suppressWarnings(suppressMessages(library(ggplot2)))
+suppressWarnings(suppressMessages(library(sparklyr)))
+suppressWarnings(suppressMessages(library(dplyr)))
+suppressWarnings(suppressMessages(library(tidyr)))
 ```
+
+First, we will load cleansed data from a previous ETL phase that was stored in hadoop.  This information is provided from the bulk downloaded files available at the [U.S. Energy Information Administration](https://www.eia.gov/opendata/bulkfiles.php).
 
 ```{r}
 sc <- sparklyr::spark_connect(
@@ -43,6 +47,8 @@ total_energy_df <- select(
     value = as.numeric(value)) %>% 
   arrange(date)
 ```
+
+We will cut off any measurements older than 1990, as many records are missing for certain categories, and the does not appear to be useful in its current form.  After a quick check, we see that there are no null values in the fields we selected.
 
 ```{r}
 electricity_net_generation_df <- total_energy_df %>% 
@@ -87,6 +93,8 @@ electricity_net_generation_pivot_df <- electricity_net_generation_df %>%
     fun.aggregate = list(value = "mean"))
 
 ```
+
+And now, we can take a first look at the net generation by fuel type.  It's immediately obvious that coal, natural gas, and nuclear power make up the major portion of consumed fuels, so we will group all others into a single category for simplicity.
 
 ```{r fig.width=12}
 color_values <- colorspace::diverge_hcl(n = 12, c = 100, l = c(20,90), power = 1)
@@ -145,6 +153,8 @@ date_limit_reduced_df <- electricity_net_generation_pivot_reduced_df %>%
   sparklyr::collect()
 ```
 
+Now we can see that in general the generation from coal has been on a slow decline with natural gas doing the opposite and nuclear electric power holding at a steady output.
+
 ```{r fig.width=12}
 electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_reduced_df %>% 
     collect() %>% 
@@ -159,6 +169,7 @@ ggplot(
   plot_theme
 ```
 
+So, let's see if we can predict the future of coal consumption.  Note, this is very much a simple analysis and there are many factors that contribute to the various fuels usages, inclding political and economical.  For this analysis, we will try to fit the time series to an ARIMA model, given how flexible it can be in hyperparamter testing.
 
 ```{r}
 eng_coal_ts <- ts(
@@ -175,6 +186,8 @@ eng_coal_ts <- ts(
     as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
   frequency = 12)
 ```
+
+From the seasonal plot wee see a rather consistent patter of peaks and valleys based on the month. The ACF plot is decaying, indicating that an arima differencing model may be appropriate.  The PACF plot show spikes at periodic lags, suggesting that differencing and/or moving average models may be appropriate.
 
 ```{r fig.width=12}
 ggseasonplot(eng_coal_ts, polar=TRUE) +
@@ -201,6 +214,9 @@ pacf_plot <- ggPacf(eng_coal_ts) +
 grid.arrange(acf_plot, pacf_plot, ncol=2)
 ```
 
+In order to try and create the most useful model, we will try to use the natural gas and nuclear power generation values as predictors for the ARIMA model as well.  As a first step, we will evaluate what happens when we let `auto.arima` pick the model for us.
+
+Surprisingly, the non-seasonal differencing value was selected to be zero, which may be due to the regressors.  However, we do see that the box test has given us promising results that the residuals are not correlated.
 
 ```{r}
 #f_xreg <- fourier(eng_coal_ts,K = 5)
@@ -221,6 +237,9 @@ fit <- auto.arima(eng_coal_ts, xreg = p_xreg)
 checkresiduals(fit)
 summary(fit)
 ```
+
+Now, let's give our own guess a shot by using the [time series cross validation ](https://otexts.com/fpp2/accuracy.html) (tsCV) from the [forecast](https://github.com/robjhyndman/forecast) package.  Note, I had to make a series of edits to make this function operat when provided with the `xreg` option.  Notes on these edits can be found [here](https://github.com/john-grando/eia-data-analysis/blob/master/app/Notebooks/tsCV_analysis.md).
+
 
 ```{r fig.width=12}
 #Adjust future predictors
