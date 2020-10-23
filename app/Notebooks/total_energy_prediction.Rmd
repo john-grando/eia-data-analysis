@@ -229,7 +229,7 @@ p_xreg <- matrix(
 )
 
 #export for hyperparameters
-save(eng_coal_ts, p_xreg, file = paste("../RFiles/total_energy_coal_data.RData", sep="/"))
+save(eng_coal_ts, p_xreg, file = paste("../RFiles/Data/total_energy_coal_data.RData", sep="/"))
 
 #try out differencing?  it is definitely not stationary
 fit <- auto.arima(eng_coal_ts, xreg = p_xreg)

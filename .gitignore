@@ -3,6 +3,9 @@
 app/logs/*.log
 app/Notebooks/**/*
 !app/Notebooks/**/*.txt
+!app/Notebooks/**/*.Rmd
+!app/Notebooks/**/*.ipynb
+!app/Notebooks/**/*.md
 EIAElec/*.json
 EIATotal/*.json
 WeatherCSV/*.csv
