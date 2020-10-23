@@ -16,6 +16,12 @@ Recently, I have found a use tsCV from the forecast package.  However, when usin
 library(forecast)
 ```
 
+```
+## Registered S3 method overwritten by 'quantmod':
+##   method            from
+##   as.zoo.data.frame zoo
+```
+
 For the practice data set, I have loaded a time series object and xreg matrix.  For more details on the subject matter, please refer to my [EIA Data Analysis Project](https://github.com/john-grando/eia-data-analysis).  For these purposes, it is only necessary to note that two predictor variables are provided in the `p_xreg` object.
 
 If we try to use the tsCV function out of the box using xregs, we get an output of `NA` values
@@ -170,34 +176,34 @@ tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
   } else {
     indx <- seq(window+initial, n - 1L, by = 1L)
   }
- for (i in indx) {
+  for (i in indx) {
     y_subset <- subset(
       y,
       start = ifelse(is.null(window), 1L,
-              ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
+                     ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
       ),
       end = i
     )
     if (is.null(xreg)) {
       fc <- try(suppressWarnings(
         forecastfunction(y_subset, h = h, ...)
-        ), silent = TRUE)
-    f_mean <- if (!is.element("try-error", class(fc))){fc$mean}
-    max_h <- h
+      ), silent = TRUE)
+      f_mean <- if (!is.element("try-error", class(fc))){fc$mean}
+      max_h <- h
     } else {
       start = ifelse(is.null(window), 1L,
-              ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
+                     ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
       end = i
       xreg_subset <- matrix(xreg[start:end,], ncol = ncol(xreg))
       #process each h separately due to errors that can happen near the end of the index
       make_prediction_m <- function(h, i) {try(matrix(xreg[i:(i+h-1),], ncol = ncol(xreg)), silent = TRUE)}
       prediction_l <- lapply(1:h, make_prediction_m, i=i)
       fc_fun <- function(px, y_subset, xr, ...) {
-          try(suppressWarnings(
-            forecastfunction(y_subset, h = nrow(px), xr = xreg_subset, px = px, ...)
-          ), silent = TRUE)
+        try(suppressWarnings(
+          forecastfunction(y_subset, h = nrow(px), xr = xreg_subset, px = px, ...)
+        ), silent = TRUE)
       }
-      fc_l <- lapply(prediction_l, fc_fun, y_subset=y_subset, xr=xreg_subset)
+      fc_l <- lapply(prediction_l, fc_fun, y_subset=y_subset, xr=xreg_subset, ...)
       f_mean_l <- lapply(fc_l, function(x){if (!is.element("try-error", class(x))){x$mean}})
       max_h <- which.max(lapply(f_mean_l, length))
       f_mean <- f_mean_l[[max_h]]
@@ -244,7 +250,7 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     subset(
       y,
       start = ifelse(is.null(window), 1L,
-              ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
+                     ifelse(i - window >= 0L, i - window + 1L, stop("small window"))
       ),
       end = i
     )
@@ -252,15 +258,15 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
   y_subset_l <- lapply(indx, y_subset_fun)
   if (is.null(xreg)) {
     fc_fun <- function(y_subset, h=h){try(suppressWarnings(
-        forecastfunction(y_subset, h = h)
-        ), silent = TRUE)}
+      forecastfunction(y_subset, h = h)
+    ), silent = TRUE)}
     fc_l <- lapply(y_subset_l, fc_fun, h=h)
     f_mean_l <- lapply(fc_l, function(x){if (!is.element("try-error", class(x))){x$mean}})
     max_h <- h
   } else {
     xreg_subset_fun <- function(i){
       x_start = ifelse(is.null(window), 1L,
-              ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
+                       ifelse(i - window >= 0L, i - window + 1L, stop("small window")))
       x_end = i
       matrix(xreg[x_start:x_end,], ncol = ncol(xreg))
     }
@@ -268,12 +274,12 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     xreg_subset_l <- lapply(indx, xreg_subset_fun)
     #subset xreg predictor for each h per each indx
     prediction_per_h_subset <- function(i, h){
-        lapply(
-          1:h, 
-          function(x, i){
-            try(matrix(xreg[i:(i+x-1),], ncol = ncol(xreg)), silent = TRUE)
-          }, 
-          i=i)
+      lapply(
+        1:h, 
+        function(x, i){
+          try(matrix(xreg[i:(i+x-1),], ncol = ncol(xreg)), silent = TRUE)
+        }, 
+        i=i)
     }
     #make list of xreg predictors per indx
     prediction_l <- lapply(indx, prediction_per_h_subset, h=h)
@@ -292,17 +298,17 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     }
     #From this point forward, process the lists using their order, which is different
     #than the raw indx due to window and initial inputs
-    fc_l <- lapply(1:length(indx), fc_fun, y_subset_l=y_subset_l, prediction_l=prediction_l, xreg_subset_l=xreg_subset_l)
+    fc_l <- lapply(1:length(indx), fc_fun, y_subset_l=y_subset_l, prediction_l=prediction_l, xreg_subset_l=xreg_subset_l, ...)
     #extract means from each predictor subset of indx
     f_mean_long_l <- lapply(
-        fc_l, 
-        function(x){
-          lapply(
-            1:h,
-            function(x2){
-              if (!is.element("try-error", class(x[[x2]]))){x[[x2]]$mean}}
-          )
-        })
+      fc_l, 
+      function(x){
+        lapply(
+          1:h,
+          function(x2){
+            if (!is.element("try-error", class(x[[x2]]))){x[[x2]]$mean}}
+        )
+      })
     #find longest arrary of each subset and use that one for the indx
     max_l <- lapply(f_mean_long_l, function(x){which.max(lapply(x, length))})
     f_mean_l <- lapply(1:length(indx), function(x){f_mean_long_l[[x]][[max_l[[x]][[1]]]]})
@@ -359,7 +365,7 @@ original_function_duration
 
 ```
 ##    user  system elapsed 
-##   1.259   0.000   1.260
+##   1.831   0.016   1.849
 ```
 
 ```r
@@ -368,7 +374,7 @@ fixed_duration
 
 ```
 ##    user  system elapsed 
-##   1.318   0.004   1.322
+##   1.636   0.003   1.686
 ```
 
 ```r
@@ -377,7 +383,7 @@ fixed_vector_duration
 
 ```
 ##    user  system elapsed 
-##   1.355   0.000   1.356
+##   1.594   0.000   1.595
 ```
 
 Test using `xreg`.  Note, the original function could not be compared, as it provides erroneous output
@@ -404,7 +410,7 @@ fixed_duration
 
 ```
 ##    user  system elapsed 
-##   8.090   0.012   8.106
+##   9.369   0.012   9.387
 ```
 
 ```r
@@ -413,6 +419,6 @@ fixed_vector_duration
 
 ```
 ##    user  system elapsed 
-##   8.111   0.000   8.114
+##   9.385   0.000   9.390
 ```
 

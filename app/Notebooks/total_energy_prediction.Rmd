@@ -52,7 +52,7 @@ We will cut off any measurements older than 1990, as many records are missing fo
 
 ```{r}
 electricity_net_generation_df <- total_energy_df %>% 
-  dplyr::filter(date > as.Date("1990-01-01")) %>% 
+  dplyr::filter(date >= as.Date("1990-01-01") & date < as.Date("2020-01-01")) %>% 
   dplyr::filter(name %rlike% "(Electricity Net Generation From.*All Sectors$)")
 ```
 
@@ -214,11 +214,14 @@ pacf_plot <- ggPacf(eng_coal_ts) +
 grid.arrange(acf_plot, pacf_plot, ncol=2)
 ```
 
-In order to try and create the most useful model, we will try to use the natural gas and nuclear power generation values as predictors for the ARIMA model as well.  As a first step, we will evaluate what happens when we let `auto.arima` pick the model for us.
+In order to try and create the most useful model, we will try to use the natural gas and nuclear power generation values as predictors for the ARIMA model as well.  As a first step, we will evaluate what happens when we let `auto.arima` pick the model for us.  We will hold out the last 12 predictions for later testing.
 
-Surprisingly, the non-seasonal differencing value was selected to be zero, which may be due to the regressors.  However, we do see that the box test has given us promising results that the residuals are not correlated.
+Surprisingly, the non-seasonal differencing value was selected to be zero, which may be due to the regressors.  However, we do see that the box test has given us promising results that the residuals are not correlated.  Also, due tto the COVID pandemic, we will leave out the 2020 data from training and testing
 
 ```{r}
+eng_coal_train_ts <- subset(eng_coal_ts, start = 1, end = length(eng_coal_ts) - 12)
+eng_coal_test_ts <- subset(eng_coal_ts, start = length(eng_coal_ts) - 12)
+
 #f_xreg <- fourier(eng_coal_ts,K = 5)
 p_xreg <- matrix(
   c(
@@ -228,29 +231,59 @@ p_xreg <- matrix(
   byrow = FALSE
 )
 
+p_xreg_train <- matrix(p_xreg[1:length(eng_coal_train_ts),], ncol = 2)
+p_xreg_test <- matrix(p_xreg[length(eng_coal_train_ts):length(eng_coal_ts),], ncol = 2)
+
 #export for hyperparameters
-save(eng_coal_ts, p_xreg, file = paste("../RFiles/Data/total_energy_coal_data.RData", sep="/"))
+save(eng_coal_train_ts, p_xreg_train, file = paste("../RFiles/Data/total_energy_coal_data.RData", sep="/"))
 
 #try out differencing?  it is definitely not stationary
-fit <- auto.arima(eng_coal_ts, xreg = p_xreg)
+auto_fit <- auto.arima(eng_coal_train_ts, xreg = p_xreg_train)
 
-checkresiduals(fit)
-summary(fit)
+checkresiduals(auto_fit)
+summary(auto_fit)
 ```
 
 Now, let's give our own guess a shot by using the [time series cross validation ](https://otexts.com/fpp2/accuracy.html) (tsCV) from the [forecast](https://github.com/robjhyndman/forecast) package.  Note, I had to make a series of edits to make this function operat when provided with the `xreg` option.  Notes on these edits can be found [here](https://github.com/john-grando/eia-data-analysis/blob/master/app/Notebooks/tsCV_analysis.md).
 
+The results of the hyperparameter training did return favorable models for non-seasonal differencing models, so we will include that here
+
+```{r}
+hyper_fit <- Arima(
+  eng_coal_train_ts, 
+  order=c(0,1,1),
+  seasonal=c(0,1,1),
+  lambda = NULL,
+  include.drift = FALSE,
+  xreg=p_xreg_train)
+
+checkresiduals(hyper_fit)
+summary(hyper_fit)
+```
+Comparing the two ARIMA models to a simple naive predictor shows that
+
+```{r}
+
+```
+
+
+And now we can plot our predictions
 
 ```{r fig.width=12}
 #Adjust future predictors
-predict_l <- 24
-amplifier <- 1.5
-n_amplifier <- 1.5
+predict_l <- 12
+amplifier <- 1
+n_amplifier <- 1
 
 tst <- tail(
   electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(), predict_l)
 new_tst <- tst * tst[1] / tail(tst,1) * seq(from = 1, to = amplifier, length.out = predict_l)
-new_n_tst <- tail(electricity_net_generation_pivot_reduced_df %>% select('eng_nuclear_electric_power') %>% pull(), predict_l) * seq(from = 1, to = n_amplifier, length.out = predict_l)
+new_n_tst <- tail(
+  electricity_net_generation_pivot_reduced_df %>% 
+    select('eng_nuclear_electric_power') %>% 
+    pull(), 
+  predict_l) * seq(from = 1, to = n_amplifier, length.out = predict_l)
+
 new_p_xreg <- matrix(
   c(
     new_tst,
@@ -259,12 +292,63 @@ new_p_xreg <- matrix(
   byrow = FALSE
 )
 
-train_fit <- forecast(
-    fit,
+hyper_forecast <- forecast(
+  hyper_fit,
+  h = predict_l, 
+  xreg=new_p_xreg
+)
+
+auto_forecast <- forecast(
+    auto_fit,
     h = predict_l, 
     xreg=new_p_xreg)
 
-autoplot(train_fit) +
+autoplot(auto_forecast) +
+  autolayer(
+    ts(
+      c(p_xreg[,1]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas') +
+  autolayer(
+    ts(
+      c(p_xreg[,2]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear') +
+  autolayer(
+    eng_coal_test_ts,
+    series = "actual coal"
+  ) + plot_theme
+
+autoplot(hyper_forecast) +
+  autolayer(
+    ts(
+      c(p_xreg[,1]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas') +
+  autolayer(
+    ts(
+      c(p_xreg[,2]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear') +
+  autolayer(
+    eng_coal_test_ts,
+    series = "actual coal"
+  ) + plot_theme
+```
+
+```{r}
   autolayer(
     ts(
       c(electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull()),
@@ -303,7 +387,7 @@ autoplot(train_fit) +
   scale_color_manual(values=color_values) +
   labs(x = "Date", y = "Million kWh") +
   ggtitle(
-    as.character(train_fit), 
+    as.character(auto_fit), 
     subtitle = paste("\nAmplification (NG): ", amplifier, ", Amplification (Nuclear): ", n_amplifier)) +
   plot_theme
 ```

@@ -35,7 +35,7 @@ forecast(
   h=h, xreg=px)}
 
 tst_e <- my_tsCV_vectorized(
-  y = eng_coal_ts, 
+  y = eng_coal_train_ts, 
   forecastfunction = forecast_fun,
   h = 4,
   window = 24,
@@ -47,7 +47,7 @@ tst_e <- my_tsCV_vectorized(
   qs_sub = 0,
   l_sub = "NULL",
   dr_sub = FALSE,
-  xreg=p_xreg)
+  xreg=p_xreg_train)
   
 data.frame(tst_e)
 
@@ -64,7 +64,7 @@ for(dr in c(FALSE, TRUE)){
               for(d in seq(0, 2, 1)){
                 e_df <- foreach(q = seq(0,2,1), .combine = rbind) %dopar% {
                   tmp_e <-  my_tsCV_vectorized(
-                    y = eng_coal_ts, 
+                    y = eng_coal_train_ts, 
                     forecastfunction = forecast_fun,
                     h = 24,
                     window = w,
@@ -76,7 +76,7 @@ for(dr in c(FALSE, TRUE)){
                     qs_sub = qs,
                     l_sub = l,
                     dr_sub = dr,
-                    xreg=p_xreg)
+                    xreg=p_xreg_train)
                   data.frame(
                     ModelName=paste('arima',"dr", dr, "w", w, "l", l,
                                     "ps", ps, "ds", ds, "qs", qs, 
