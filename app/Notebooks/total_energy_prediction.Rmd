@@ -269,7 +269,7 @@ Comparing the two ARIMA models to a simple naive predictor shows that
 
 And now we can plot our predictions
 
-```{r fig.width=12}
+```{r fig.width=12, warning=FALSE, message=FALSE}
 #Adjust future predictors
 predict_l <- 12
 amplifier <- 1
@@ -323,7 +323,14 @@ autoplot(auto_forecast) +
   autolayer(
     eng_coal_test_ts,
     series = "actual coal"
-  ) + plot_theme
+  ) + 
+  labs(x="Date", y="Million kWh") +
+  scale_x_continuous(
+    labels=function(x){as.integer(x)}) +
+  ggtitle(
+    'Auto Arima Model', 
+    subtitle = as.character(auto_fit)) +
+  plot_theme
 
 autoplot(hyper_forecast) +
   autolayer(
@@ -345,10 +352,18 @@ autoplot(hyper_forecast) +
   autolayer(
     eng_coal_test_ts,
     series = "actual coal"
-  ) + plot_theme
+  ) + 
+  labs(x="Date", y="Million kWh") +
+  scale_x_continuous(
+    labels=function(x){as.integer(x)}) +
+  ggtitle(
+    'Hyperparameter Model', 
+    subtitle = as.character(auto_fit)) +
+  plot_theme
 ```
 
-```{r}
+```{r eval=FALSE}
+#temporary save of plotting objects
   autolayer(
     ts(
       c(electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull()),

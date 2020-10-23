@@ -1,5 +1,5 @@
 ---
-title: "Total Energy"
+title: "U.S. Total Electrical Energy Generation From Fuel Sources"
 author: "John Grando"
 date: "October 19, 2020"
 output: 
@@ -8,105 +8,77 @@ output:
   
 ---
 
+In this analysis, we take a look at the aggregated U.S. net electrical generation, and how that power is produced.  The preliminary analysis will show the breakdown of various fuel sources and then we will move into a quick forecast of coal consumption within the next few years.
 
 
 
-```r
-library(sparklyr)
-library(dplyr)
-```
-
-```
-## 
-## Attaching package: 'dplyr'
-```
-
-```
-## The following objects are masked from 'package:stats':
-## 
-##     filter, lag
-```
-
-```
-## The following objects are masked from 'package:base':
-## 
-##     intersect, setdiff, setequal, union
-```
 
 ```r
-library(tidyr)
-library(forecast)
-library(kableExtra)
+suppressWarnings(suppressMessages(library(tidyverse)))
+suppressWarnings(suppressMessages(library(RColorBrewer)))
+suppressWarnings(suppressMessages(library(kableExtra)))
+suppressWarnings(suppressMessages(library(gridExtra)))
+suppressWarnings(suppressMessages(library(forecast)))
+suppressWarnings(suppressMessages(library(ggplot2)))
+suppressWarnings(suppressMessages(library(sparklyr)))
+suppressWarnings(suppressMessages(library(dplyr)))
+suppressWarnings(suppressMessages(library(tidyr)))
 ```
 
-```
-## 
-## Attaching package: 'kableExtra'
-```
-
-```
-## The following object is masked from 'package:dplyr':
-## 
-##     group_rows
-```
-
-```r
-library(ggplot2)
-```
+First, we will load cleansed data from a previous ETL phase that was stored in hadoop.  This information is provided from the bulk downloaded files available at the [U.S. Energy Information Administration](https://www.eia.gov/opendata/bulkfiles.php).
 
 
 ```r
 sc <- sparklyr::spark_connect(
   master = 'local[2]', 
-  spark_home = '/usr/local/spark3')
+  spark_home = Sys.getenv("SPARK_HOME"))
 total_energy_df <- sparklyr::spark_read_parquet(
   sc = sc, 
-  name = 'total_energy_test_df', 
+  name = 'total_energy_df', 
   path = "hdfs://localhost:9000/Processed/TotalEnergyDF")
-total_energy_df <- select(total_energy_df, "date", "name", "value", "units") %>% 
+total_energy_df <- select(
+    total_energy_df, 
+    "date", 
+    "name", 
+    "value", 
+    "units") %>% 
   mutate(
     date = as.date(date),
-    value = as.numeric(value))
+    value = as.numeric(value)) %>% 
+  arrange(date)
 ```
+
+We will cut off any measurements older than 1990, as many records are missing for certain categories, and the does not appear to be useful in its current form.  After a quick check, we see that there are no null values in the fields we selected.
 
 
 ```r
-electricity_net_generation_df <- 
-  total_energy_df %>% 
-  filter(name %rlike% "Electricity Net Generation Total.* All Sectors$")
+electricity_net_generation_df <- total_energy_df %>% 
+  dplyr::filter(date >= as.Date("1990-01-01") & date < as.Date("2020-01-01")) %>% 
+  dplyr::filter(name %rlike% "(Electricity Net Generation From.*All Sectors$)")
 ```
 
 
 ```r
 electricity_net_generation_df %>% 
-  filter(is.na(name) | name == '') %>% 
+  dplyr::filter(is.na(value) | value == '') %>% 
   dplyr::count(name = "null fields") %>% 
   kable('html') %>% 
   kable_styling(
     bootstrap_options = 'striped',
+    full_width = FALSE,
+    position = "center",
     font_size = 20)
 ```
 
-<table class="table table-striped" style="font-size: 20px; margin-left: auto; margin-right: auto;">
- <thead>
-  <tr>
-   <th style="text-align:right;"> null fields </th>
-  </tr>
- </thead>
-<tbody>
-  <tr>
-   <td style="text-align:right;"> 0 </td>
-  </tr>
-</tbody>
-</table>
+
 
 ```r
 date_limit_df <- electricity_net_generation_df %>% 
   group_by() %>% 
-  summarize(
+  dplyr::summarize(
     min_date = min(date), 
     max_date = max(date)) %>% 
-  collect()
+  sparklyr::collect()
 ```
 
 ```
@@ -122,54 +94,424 @@ date_limit_df <- electricity_net_generation_df %>%
 ```
 
 
+
 ```r
-electricity_net_generation_ts <- ts(
-  data = electricity_net_generation_df %>%  
-    arrange(date) %>% 
-    select("value") %>% 
+electricity_net_generation_pivot_df <- electricity_net_generation_df %>% 
+  dplyr::mutate(
+    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
+    name = tolower(name)
+  ) %>% 
+  mutate(
+    name = regexp_replace(name, ' ', '_')
+  ) %>% 
+  sdf_pivot(
+    formula = date ~ name, 
+    fun.aggregate = list(value = "mean"))
+```
+
+And now, we can take a first look at the net generation by fuel type.  It's immediately obvious that coal, natural gas, and nuclear power make up the major portion of consumed fuels, so we will group all others into a single category for simplicity.
+
+
+```r
+color_values <- colorspace::diverge_hcl(n = 12, c = 100, l = c(20,90), power = 1)
+
+electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_df %>% 
     collect() %>% 
-    pull("value"), 
-  start = c(
-    as.numeric(format(date_limit_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_df["min_date"][[1]], "%m"))),
-  end = c(
-    as.numeric(format(date_limit_df["max_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_df["max_date"][[1]], "%m"))),
-  frequency = 12)
-electricity_net_generation_ts <- window(electricity_net_generation_ts, start=c(2000,1))
-```
+    gather(key = "id", value = 'val', -c(date))
 
+plot_theme <- theme(plot.title = element_text(hjust = 0.5, size = 25),
+        plot.subtitle = element_text(hjust = 0.5, size = 14),
+        strip.text = element_text(size = 20),
+        plot.background = element_rect(fill = "lightgrey"), 
+        panel.background = element_rect(fill = "white"), 
+        panel.grid.major.x = element_line(color = "lightgrey"), 
+        panel.grid.major.y = element_line(color = "lightgrey"), 
+        axis.text = element_text(size=14, color = "grey1"), 
+        axis.title = element_text(size=16, color = "grey1"))
 
-```r
-autoplot(electricity_net_generation_ts, series='original')
-```
-
-![](total_energy_prediction_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
-
-```r
-ggseasonplot(electricity_net_generation_ts, polar=TRUE)
-```
-
-![](total_energy_prediction_files/figure-html/unnamed-chunk-6-2.png)<!-- -->
-
-
-```r
-electricity_net_generation_ts %>%  stl(s.window = 24) %>% autoplot()
+ggplot(
+  data = electricity_net_generation_pivot_melted_df, 
+  mapping = aes(x = date, y = val, color = id)) +
+  geom_line() +
+  scale_color_manual(values = color_values) +
+  labs(x = "Date", y = "Million kWh") +
+  ggtitle("Electricity Net Generation") +
+  plot_theme
 ```
 
 ![](total_energy_prediction_files/figure-html/unnamed-chunk-7-1.png)<!-- -->
 
+
 ```r
-ggAcf(electricity_net_generation_ts)
+electricity_net_generation_pivot_reduced_df <- electricity_net_generation_df %>% 
+  filter(date > as.Date('2010-01-01')) %>% 
+  dplyr::mutate(
+    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
+    name = tolower(name)) %>% 
+  mutate(
+    name = regexp_replace(name, ' ', '_')
+  ) %>% 
+  mutate(
+    name = ifelse(
+      name %in% c(
+        "eng_coal", 
+        "eng_natural_gas", 
+        "eng_nuclear_electric_power"), 
+      name, 
+      "eng_other")
+  ) %>% 
+  sdf_pivot(
+    formula = date ~ name, 
+    fun.aggregate = list(value = "mean"))
+
+date_limit_reduced_df <- electricity_net_generation_pivot_reduced_df %>% 
+  group_by() %>% 
+  dplyr::summarize(
+    min_date = min(date), 
+    max_date = max(date)) %>% 
+  sparklyr::collect()
 ```
 
-![](total_energy_prediction_files/figure-html/unnamed-chunk-7-2.png)<!-- -->
+Now we can see that in general the generation from coal has been on a slow decline with natural gas doing the opposite and nuclear electric power holding at a steady output.
+
 
 ```r
-# run checkresiduals(fit) for outputs
+electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_reduced_df %>% 
+    collect() %>% 
+    gather(key = "id", value = 'val', -c(date))
+ggplot(
+  data = electricity_net_generation_pivot_melted_df, 
+  mapping = aes(x = date, y = val, color = id)) +
+  geom_line() +
+  scale_color_manual(values = color_values) +
+  labs(x = "Date", y = "Million kWh") +
+  ggtitle("Electricity Net Generation - Reduced Categories") +
+  plot_theme
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-9-1.png)<!-- -->
+
+So, let's see if we can predict the future of coal consumption.  Note, this is very much a simple analysis and there are many factors that contribute to the various fuels usages, inclding political and economical.  For this analysis, we will try to fit the time series to an ARIMA model, given how flexible it can be in hyperparamter testing.
+
+
+```r
+eng_coal_ts <- ts(
+  data = electricity_net_generation_pivot_reduced_df %>%  
+    arrange(date) %>% 
+    select("eng_coal") %>% 
+    collect() %>% 
+    pull("eng_coal"), 
+  start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+  end = c(
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
+  frequency = 12)
+```
+
+From the seasonal plot wee see a rather consistent patter of peaks and valleys based on the month. The ACF plot is decaying, indicating that an arima differencing model may be appropriate.  The PACF plot show spikes at periodic lags, suggesting that differencing and/or moving average models may be appropriate.
+
+
+```r
+ggseasonplot(eng_coal_ts, polar=TRUE) +
+  scale_color_manual(values=color_values) +
+  ggtitle("Seasonal Coal Generation") +
+  plot_theme
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-11-1.png)<!-- -->
+
+
+```r
+autoplot(eng_coal_ts, series='original') + 
+  labs(x = "Year", y = "Million kWh") +
+  ggtitle("Electricity Net Generation From Coal") +
+  scale_color_manual(values=color_values) +
+  plot_theme
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-12-1.png)<!-- -->
+
+
+```r
+acf_plot <- ggAcf(eng_coal_ts) + 
+  plot_theme +
+  ggtitle("ACF")
+pacf_plot <- ggPacf(eng_coal_ts) +
+  plot_theme +
+  ggtitle("PACF")
+grid.arrange(acf_plot, pacf_plot, ncol=2)
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-13-1.png)<!-- -->
+
+In order to try and create the most useful model, we will try to use the natural gas and nuclear power generation values as predictors for the ARIMA model as well.  As a first step, we will evaluate what happens when we let `auto.arima` pick the model for us.  We will hold out the last 12 predictions for later testing.
+
+Surprisingly, the non-seasonal differencing value was selected to be zero, which may be due to the regressors.  However, we do see that the box test has given us promising results that the residuals are not correlated.  Also, due tto the COVID pandemic, we will leave out the 2020 data from training and testing
+
+
+```r
+eng_coal_train_ts <- subset(eng_coal_ts, start = 1, end = length(eng_coal_ts) - 12)
+eng_coal_test_ts <- subset(eng_coal_ts, start = length(eng_coal_ts) - 12)
+
+#f_xreg <- fourier(eng_coal_ts,K = 5)
+p_xreg <- matrix(
+  c(
+    electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(),
+    electricity_net_generation_pivot_reduced_df %>% select('eng_nuclear_electric_power') %>% pull()),
+  ncol=2, 
+  byrow = FALSE
+)
+
+p_xreg_train <- matrix(p_xreg[1:length(eng_coal_train_ts),], ncol = 2)
+p_xreg_test <- matrix(p_xreg[length(eng_coal_train_ts):length(eng_coal_ts),], ncol = 2)
+
+#export for hyperparameters
+save(eng_coal_train_ts, p_xreg_train, file = paste("../RFiles/Data/total_energy_coal_data.RData", sep="/"))
+
+#try out differencing?  it is definitely not stationary
+auto_fit <- auto.arima(eng_coal_train_ts, xreg = p_xreg_train)
+
+checkresiduals(auto_fit)
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-14-1.png)<!-- -->
+
+```
+## 
+## 	Ljung-Box test
+## 
+## data:  Residuals from Regression with ARIMA(1,0,0)(2,1,0)[12] errors
+## Q* = 18.098, df = 15.4, p-value = 0.2813
+## 
+## Model df: 6.   Total lags used: 21.4
 ```
 
 ```r
-#could do multivariate test with cooling demand, which is also in this data set
+summary(auto_fit)
+```
+
+```
+## Series: eng_coal_train_ts 
+## Regression with ARIMA(1,0,0)(2,1,0)[12] errors 
+## 
+## Coefficients:
+##          ar1     sar1     sar2      drift                  
+##       0.6219  -0.3950  -0.4086  -504.9210  -0.2041  -0.1991
+## s.e.  0.1034   0.1063   0.1032   127.7853   0.1855   0.4324
+## 
+## sigma^2 estimated as 67645742:  log likelihood=-991.04
+## AIC=1996.08   AICc=1997.36   BIC=2013.95
+## 
+## Training set error measures:
+##                     ME     RMSE      MAE        MPE     MAPE      MASE
+## Training set -172.1788 7501.072 5491.031 -0.3879156 4.959173 0.4594737
+##                      ACF1
+## Training set -0.002690553
+```
+
+Now, let's give our own guess a shot by using the [time series cross validation ](https://otexts.com/fpp2/accuracy.html) (tsCV) from the [forecast](https://github.com/robjhyndman/forecast) package.  Note, I had to make a series of edits to make this function operat when provided with the `xreg` option.  Notes on these edits can be found [here](https://github.com/john-grando/eia-data-analysis/blob/master/app/Notebooks/tsCV_analysis.md).
+
+The results of the hyperparameter training did return favorable models for non-seasonal differencing models, so we will include that here
+
+
+```r
+hyper_fit <- Arima(
+  eng_coal_train_ts, 
+  order=c(0,1,1),
+  seasonal=c(0,1,1),
+  lambda = NULL,
+  include.drift = FALSE,
+  xreg=p_xreg_train)
+
+checkresiduals(hyper_fit)
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
+
+```
+## 
+## 	Ljung-Box test
+## 
+## data:  Residuals from Regression with ARIMA(0,1,1)(0,1,1)[12] errors
+## Q* = 32.189, df = 17.4, p-value = 0.01666
+## 
+## Model df: 4.   Total lags used: 21.4
+```
+
+```r
+summary(hyper_fit)
+```
+
+```
+## Series: eng_coal_train_ts 
+## Regression with ARIMA(0,1,1)(0,1,1)[12] errors 
+## 
+## Coefficients:
+##           ma1     sma1  p_xreg_train1  p_xreg_train2
+##       -0.3263  -0.9999         0.0620        -0.4443
+## s.e.   0.1223   0.1906         0.1631         0.4367
+## 
+## sigma^2 estimated as 53755856:  log likelihood=-981.05
+## AIC=1972.1   AICc=1972.78   BIC=1984.81
+## 
+## Training set error measures:
+##                    ME     RMSE      MAE       MPE     MAPE      MASE
+## Training set 335.9671 6724.225 4966.022 0.1551918 4.543036 0.4155424
+##                   ACF1
+## Training set 0.0628615
+```
+Comparing the two ARIMA models to a simple naive predictor shows that
+
+
+
+
+And now we can plot our predictions
+
+
+```r
+#Adjust future predictors
+predict_l <- 12
+amplifier <- 1
+n_amplifier <- 1
+
+tst <- tail(
+  electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(), predict_l)
+new_tst <- tst * tst[1] / tail(tst,1) * seq(from = 1, to = amplifier, length.out = predict_l)
+new_n_tst <- tail(
+  electricity_net_generation_pivot_reduced_df %>% 
+    select('eng_nuclear_electric_power') %>% 
+    pull(), 
+  predict_l) * seq(from = 1, to = n_amplifier, length.out = predict_l)
+
+new_p_xreg <- matrix(
+  c(
+    new_tst,
+    new_n_tst),
+  ncol=2, 
+  byrow = FALSE
+)
+
+hyper_forecast <- forecast(
+  hyper_fit,
+  h = predict_l, 
+  xreg=new_p_xreg
+)
+
+auto_forecast <- forecast(
+    auto_fit,
+    h = predict_l, 
+    xreg=new_p_xreg)
+
+autoplot(auto_forecast) +
+  autolayer(
+    ts(
+      c(p_xreg[,1]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas') +
+  autolayer(
+    ts(
+      c(p_xreg[,2]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear') +
+  autolayer(
+    eng_coal_test_ts,
+    series = "actual coal"
+  ) + 
+  labs(x="Date", y="Million kWh") +
+  scale_x_continuous(
+    labels=function(x){as.integer(x)}) +
+  ggtitle(
+    'Auto Arima Model', 
+    subtitle = as.character(auto_fit)) +
+  plot_theme
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-17-1.png)<!-- -->
+
+```r
+autoplot(hyper_forecast) +
+  autolayer(
+    ts(
+      c(p_xreg[,1]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas') +
+  autolayer(
+    ts(
+      c(p_xreg[,2]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear') +
+  autolayer(
+    eng_coal_test_ts,
+    series = "actual coal"
+  ) + 
+  labs(x="Date", y="Million kWh") +
+  scale_x_continuous(
+    labels=function(x){as.integer(x)}) +
+  ggtitle(
+    'Hyperparameter Model', 
+    subtitle = as.character(auto_fit)) +
+  plot_theme
+```
+
+![](total_energy_prediction_files/figure-html/unnamed-chunk-17-2.png)<!-- -->
+
+
+```r
+#temporary save of plotting objects
+  autolayer(
+    ts(
+      c(electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull()),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas') +
+  autolayer(
+    ts(
+      new_tst,
+      start = c(
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'natural gas prediction'
+  ) +
+  autolayer(
+    ts(
+      c(electricity_net_generation_pivot_reduced_df %>% select('eng_nuclear_electric_power') %>% pull()),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear') +
+  autolayer(
+    ts(
+      new_n_tst,
+      start = c(
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'nuclear prediction'
+  ) +
+  coord_cartesian(xlim=c(2010,2025), ylim = c(0,2.5e+05)) +
+  scale_color_manual(values=color_values) +
+  labs(x = "Date", y = "Million kWh") +
+  ggtitle(
+    as.character(auto_fit), 
+    subtitle = paste("\nAmplification (NG): ", amplifier, ", Amplification (Nuclear): ", n_amplifier)) +
+  plot_theme
 ```
 
