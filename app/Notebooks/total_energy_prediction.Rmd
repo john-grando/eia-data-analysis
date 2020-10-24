@@ -8,10 +8,15 @@ output:
 
 ---
 
+<strong>[Home Page](https://john-grando.github.io/)</strong>
+
 In this analysis, we take a look at the aggregated U.S. net electrical generation, and how that power is produced.  The preliminary analysis will show the breakdown of various fuel sources and then we will move into a quick forecast of coal consumption within the next few years.
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  dev.args=list(bg = 'transparent'),
+  fig.align='center')
 ```
 
 ```{r warning=FALSE}

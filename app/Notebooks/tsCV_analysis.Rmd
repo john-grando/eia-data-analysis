@@ -7,10 +7,15 @@ output:
     css: "CSS/main.css"
 ---
 
+<strong>[Home Page](https://john-grando.github.io/)</strong>
+
 Recently, I have found a use tsCV from the forecast package.  However, when using the `xreg` option I encountered a few issues and decided to look into them.  This report summarizes the findings and proposed fixes for this function.  First, a great thank you to Rob J Hyndman and George Athanasopoulos for providing such a wonderful resource that is freely available.
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  dev.args=list(bg = 'transparent'),
+  fig.align='center')
 ```
 
 ```{r}

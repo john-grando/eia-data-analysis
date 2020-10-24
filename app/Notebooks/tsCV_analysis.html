@@ -386,6 +386,7 @@ summary {
 </div>
 
 
+<p><strong><a href="https://john-grando.github.io/">Home</a></strong></p>
 <p>Recently, I have found a use tsCV from the forecast package. However, when using the <code>xreg</code> option I encountered a few issues and decided to look into them. This report summarizes the findings and proposed fixes for this function. First, a great thank you to Rob J Hyndman and George Athanasopoulos for providing such a wonderful resource that is freely available.</p>
 <pre class="r"><code>library(forecast)</code></pre>
 <pre><code>## Registered S3 method overwritten by &#39;quantmod&#39;:
@@ -683,13 +684,13 @@ all.equal(data.frame(e1),data.frame(e2), data.frame(e2), tolerance=0.1, scale = 
 <pre><code>## [1] TRUE</code></pre>
 <pre class="r"><code>original_function_duration</code></pre>
 <pre><code>##    user  system elapsed 
-##   1.438   0.020   1.459</code></pre>
+##    1.39    0.02    1.41</code></pre>
 <pre class="r"><code>fixed_duration</code></pre>
 <pre><code>##    user  system elapsed 
-##   1.367   0.004   1.372</code></pre>
+##   1.331   0.000   1.331</code></pre>
 <pre class="r"><code>fixed_vector_duration</code></pre>
 <pre><code>##    user  system elapsed 
-##   1.383   0.000   1.383</code></pre>
+##    1.34    0.00    1.34</code></pre>
 <pre class="r"><code>if(max(is.na(e1), is.na(e2), is.na(e3)) == length(e2)){print(&quot;Error: one result is all NA&quot;)}</code></pre>
 <p>Test using <code>xreg</code>. Note, the original function could not be compared, as it provides erroneous output. Also note, any additional arguments that wish to be passed to the <code>forecastfunction</code> must be explicity written out in the function itself. In this example, I pass the <code>order</code> argument. This is a useful note for when this function is used in hyper parameter training</p>
 <pre class="r"><code>my_fun &lt;- function(px, x, h, xr, o){forecast(Arima(x, order=o, xreg=xr), h=h, xreg=px)}
@@ -703,10 +704,10 @@ all.equal(data.frame(e2xr), data.frame(e3xr), tolerance=0.1, scale = NULL)</code
 <pre><code>## [1] TRUE</code></pre>
 <pre class="r"><code>fixed_duration</code></pre>
 <pre><code>##    user  system elapsed 
-##   3.791   0.000   3.817</code></pre>
+##   3.271   0.000   3.271</code></pre>
 <pre class="r"><code>fixed_vector_duration</code></pre>
 <pre><code>##    user  system elapsed 
-##   3.454   0.000   3.456</code></pre>
+##   3.231   0.000   3.231</code></pre>
 <pre class="r"><code>if(max(is.na(e2xr), is.na(e3xr)) == length(e2xr)){print(&quot;Error: one result is all NA&quot;)}</code></pre>
 
 
