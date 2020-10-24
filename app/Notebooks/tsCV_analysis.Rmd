@@ -2,7 +2,9 @@
 title: "Modifying forecast's tsCV"
 author: "John Grando"
 date: "October 21, 2020"
-output: html_document
+output: 
+  html_document:
+    css: "CSS/main.css"
 ---
 
 Recently, I have found a use tsCV from the forecast package.  However, when using the `xreg` option I encountered a few issues and decided to look into them.  This report summarizes the findings and proposed fixes for this function.  First, a great thank you to Rob J Hyndman and George Athanasopoulos for providing such a wonderful resource that is freely available.

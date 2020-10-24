@@ -2,8 +2,10 @@
 title: "U.S. Total Electrical Energy Generation From Fuel Sources"
 author: "John Grando"
 date: "October 19, 2020"
-output: html_document
-  
+output: 
+  html_document:
+    css: "CSS/main.css"
+
 ---
 
 In this analysis, we take a look at the aggregated U.S. net electrical generation, and how that power is produced.  The preliminary analysis will show the breakdown of various fuel sources and then we will move into a quick forecast of coal consumption within the next few years.

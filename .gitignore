@@ -1,11 +1,7 @@
 *.pyc
 *.crc
-app/logs/*.log
-app/Notebooks/**/*
-!app/Notebooks/**/*.txt
-!app/Notebooks/**/*.Rmd
-!app/Notebooks/**/*.ipynb
-!app/Notebooks/**/*.md
+*.log
+app/Notebooks/metastore_db/*
 EIAElec/*.json
 EIATotal/*.json
 WeatherCSV/*.csv
