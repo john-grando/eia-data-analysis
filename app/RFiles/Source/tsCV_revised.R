@@ -1,4 +1,10 @@
 
+# for xreg to work, the prediction xreg must be named px
+# because of how the forecast function is run, the same number of predictors in xreg have to be supplied as h; therefore,
+# one run for each h is performed.  If you are okay with losing some predictions at the rows (indx), then you can pass
+# 'shortened = TRUE' and just one prediction at h will be run, but you will lose and partial 1:(h-1) prediction values
+# at that indx row.
+
 my_tsCV <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, console_print=NULL, ...) {
   y <- as.ts(y)
   n <- length(y)
@@ -64,7 +70,7 @@ my_tsCV <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
   }
 }
 
-my_tsCV_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, ...) {
+my_tsCV_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, shortened=FALSE, ...) {
   y <- as.ts(y)
   n <- length(y)
   e <- ts(matrix(NA_real_, nrow = n, ncol = h))
@@ -118,13 +124,15 @@ my_tsCV_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     }
     #make list of xreg predictors per indx
     prediction_l <- lapply(indx, prediction_per_h_subset, h=h)
-    #run function and return list of xreg predictors per indx
+    #run function for each h for each indx and return h predictions per indx
+    # if shortened = TRUE then only one prediction of length h is used.
     fc_fun <- function(i, y_subset_l, prediction_l, xreg_subset_l, ...) {
       prediction <- prediction_l[[i]]
       y_subset <- y_subset_l[[i]]
       xr = xreg_subset_l[[i]]
+      h_start <- ifelse(shortened == TRUE, h, 1)
       lapply(
-        prediction[1:h],
+        prediction[h_start:h],
         function(px){
           try(suppressWarnings(
             forecastfunction(px = px, x = y_subset, h = nrow(px), xr = xr, ...)
@@ -134,12 +142,13 @@ my_tsCV_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     #From this point forward, process the lists using their order, which is different
     #than the raw indx due to window and initial inputs
     fc_l <- lapply(1:length(indx), fc_fun, y_subset_l=y_subset_l, prediction_l=prediction_l, xreg_subset_l=xreg_subset_l, ...)
-    #extract means from each predictor subset of indx
+    #extract values from each subset of h in each indx
     f_mean_long_l <- lapply(
       fc_l, 
       function(x){
+        h_end <- ifelse(shortened==TRUE,1,h)
         lapply(
-          1:h,
+          1:h_end,
           function(x2){
             if (!is.element("try-error", class(x[[x2]]))){x[[x2]]$mean}}
         )
@@ -151,18 +160,17 @@ my_tsCV_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
   }
   #process errors
   errors_fun <- function(i){
+    #indx[i] refers to the original row location
     f_tmp <- c(
       f_mean_l[[i]],
       rep(NA,h-length(f_mean_l[[i]]))
     )
-    tmp_result <- as.vector(y[i + (1:max_h)] - f_tmp)
-    result <- c(
+    tmp_result <- as.vector(y[indx[i] + (1:max_h)] - f_tmp)
+    e[indx[i], ] <<- c(
       tmp_result, 
       rep(NA,h-length(tmp_result)))
   }
-  errors_l <- lapply(1:length(indx), errors_fun)
-  window <- ifelse(is.null(window),0,window)
-  lapply(1:length(indx), function(x){e[x+window+initial,] <<- errors_l[[x]]})
+  lapply(1:length(indx), errors_fun)
   if (h == 1) {
     return(e[, 1L])
   } else {

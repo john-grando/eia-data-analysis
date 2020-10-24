@@ -34,7 +34,7 @@ forecast(
     xreg=xr), 
   h=h, xreg=px)}
 
-tst_e <- my_tsCV_vectorized(
+tst_e <- my_tsCV(
   y = eng_coal_train_ts, 
   forecastfunction = forecast_fun,
   h = 4,
@@ -63,7 +63,7 @@ for(dr in c(FALSE, TRUE)){
             for(p in seq(0, 2, 1)){
               for(d in seq(0, 2, 1)){
                 e_df <- foreach(q = seq(0,2,1), .combine = rbind) %dopar% {
-                  tmp_e <-  my_tsCV_vectorized(
+                  tmp_e <-  my_tsCV(
                     y = eng_coal_train_ts, 
                     forecastfunction = forecast_fun,
                     h = 24,
@@ -77,19 +77,29 @@ for(dr in c(FALSE, TRUE)){
                     l_sub = l,
                     dr_sub = dr,
                     xreg=p_xreg_train)
-                  data.frame(
-                    ModelName=paste('arima',"dr", dr, "w", w, "l", l,
-                                    "ps", ps, "ds", ds, "qs", qs, 
-                                    "p", p, "d", d, "q", q, sep='_'),
-                    RMSE_12=sqrt(mean(tmp_e[,12]^2, na.rm=TRUE)),
-                    RMSE_24=sqrt(mean(tmp_e[,24]^2, na.rm=TRUE)),
-                    RunTime=Sys.time())
+                  data.frame(tmp_e) %>% 
+                    group_by() %>% 
+                    summarize_all(
+                      list(
+                        mae = ~ mean(abs(.), na.rm=TRUE), 
+                        rmse = ~mean(.^2, na.rm = TRUE))) %>% 
+                    mutate(
+                      model_name = paste(
+                        'arima',"dr", dr, "w", w, "l", l,
+                        "ps", ps, "ds", ds, "qs", qs, 
+                        "p", p, "d", d, "q", q, sep='_'),
+                      run_time = Sys.time())
                 }
                 model_metrics_arima_df <- rbind(model_metrics_arima_df, e_df)
                 print('latest model')
-                print(data.frame(e_df) %>% arrange(RMSE_12))
+                print(data.frame(e_df) %>%  
+                  select(model_name, run_time, h.12_mae, h.24_mae, h.12_rmse, h.24_rmse) %>% 
+                  arrange(h.24_mae))
                 print('all models')
-                print(model_metrics_arima_df %>% arrange(RMSE_12) %>% head(10))
+                print(model_metrics_arima_df %>% 
+                  select(model_name, run_time, h.12_mae, h.24_mae, h.12_rmse, h.24_rmse) %>% 
+                  arrange(h.24_mae) %>% 
+                  head(10))
                 flush.console()
               }
               save(model_metrics_arima_df, file = destfile)

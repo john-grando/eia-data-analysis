@@ -2,9 +2,7 @@
 title: "U.S. Total Electrical Energy Generation From Fuel Sources"
 author: "John Grando"
 date: "October 19, 2020"
-output: 
-  html_document:
-    keep_md: true
+output: html_document
   
 ---
 
@@ -263,7 +261,30 @@ summary(hyper_fit)
 Comparing the two ARIMA models to a simple naive predictor shows that
 
 ```{r}
+#source('../RFiles/Source/tsCV_revised.R')
+#hyper_fun <- function(x, h, xr, px){
+#  forecast(
+#    Arima(
+#      x, 
+#      order=c(0,1,1),
+#      seasonal=c(0,1,1),
+#      lambda = NULL,
+#      include.drift = FALSE,
+#      xreg=xr), 
+#    h=h,
+#    xreg=px)}
 
+#hyper_cv <- my_tsCV_vectorized(
+#  eng_coal_ts,
+#  hyper_fun,
+#  xreg = p_xreg,
+#  h = 24,
+#  shortened = TRUE
+#)
+
+hyper_fit %>% forecast(h = 12, xreg=p_xreg_test) %>% accuracy(eng_coal_test_ts)
+auto_fit %>% forecast(h = 12, xreg=p_xreg_test) %>% accuracy(eng_coal_test_ts)
+snaive(y = eng_coal_train_ts, h = 12) %>% accuracy(eng_coal_test_ts)
 ```
 
 
@@ -324,6 +345,10 @@ autoplot(auto_forecast) +
     eng_coal_test_ts,
     series = "actual coal"
   ) + 
+  autolayer(
+    snaive(y = eng_coal_train_ts, h = 12),
+    PI = FALSE,
+    series = "naive") +
   labs(x="Date", y="Million kWh") +
   scale_x_continuous(
     labels=function(x){as.integer(x)}) +
@@ -353,6 +378,10 @@ autoplot(hyper_forecast) +
     eng_coal_test_ts,
     series = "actual coal"
   ) + 
+  autolayer(
+    snaive(y = eng_coal_train_ts, h = 12),
+    PI = FALSE,
+    series = "naive") +
   labs(x="Date", y="Million kWh") +
   scale_x_continuous(
     labels=function(x){as.integer(x)}) +

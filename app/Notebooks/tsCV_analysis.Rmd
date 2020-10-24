@@ -2,9 +2,7 @@
 title: "Modifying forecast's tsCV"
 author: "John Grando"
 date: "October 21, 2020"
-output: 
-  html_document:
-    keep_md: true
+output: html_document
 ---
 
 Recently, I have found a use tsCV from the forecast package.  However, when using the `xreg` option I encountered a few issues and decided to look into them.  This report summarizes the findings and proposed fixes for this function.  First, a great thank you to Rob J Hyndman and George Athanasopoulos for providing such a wonderful resource that is freely available.
@@ -17,23 +15,28 @@ knitr::opts_chunk$set(echo = TRUE)
 library(forecast)
 ```
 
-For the practice data set, I have loaded a time series object and xreg matrix.  For more details on the subject matter, please refer to my [EIA Data Analysis Project](https://github.com/john-grando/eia-data-analysis).  For these purposes, it is only necessary to note that two predictor variables are provided in the `p_xreg` object.
+For the practice data set, I have loaded a time series object and xreg matrix.  For more details on the subject matter, please refer to my [EIA Data Analysis Project](https://github.com/john-grando/eia-data-analysis).  For these purposes, it is only necessary to note that two predictor variables are provided in the `p_xreg_train` object.
 
 If we try to use the tsCV function out of the box using xregs, we get an output of `NA` values
 
 ```{r}
 my_file <- "https://github.com/john-grando/eia-data-analysis/blob/master/app/RFiles/Data/total_energy_coal_data.RData?raw=true"
 load(url(my_file))
-my_fun <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h, xreg=xreg)}
-(e <- tsCV(eng_coal_ts, my_fun, h=1, xreg=p_xreg))
+my_fun <- function(x, h){
+  forecast(
+    Arima(
+      x, 
+      order=c(2,0,0)), 
+    h=h, xreg=xreg)}
+(tsCV(eng_coal_train_ts, my_fun, h=1, xreg=p_xreg_train))
 ```
 
 To debug this problem, we can step through the function.  First, we will set the initial parameters
 
 ```{r}
-y <- eng_coal_ts
+y <- eng_coal_train_ts
 h = 2
-xreg = p_xreg
+xreg = p_xreg_train
 initial = 0
 window = NULL
 forecastfunction = my_fun
@@ -190,10 +193,10 @@ tsCV_v2 <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0,
 }
 ```
 
-Additionally, the new tsCV function has been vectorized, which removes all uses of for loops.  This should provide better performance for larger data sets.
+Additionally, the new tsCV function has been vectorized, which removes all uses of for loops.  This vectorized verion may provide better performance for larger data sets, but it is untested.
 
 ```{r}
-tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, ...) {
+tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, shortened=FALSE, ...) {
   y <- as.ts(y)
   n <- length(y)
   e <- ts(matrix(NA_real_, nrow = n, ncol = h))
@@ -247,13 +250,15 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     }
     #make list of xreg predictors per indx
     prediction_l <- lapply(indx, prediction_per_h_subset, h=h)
-    #run function and return list of xreg predictors per indx
+    #run function for each h for each indx and return h predictions per indx
+    # if shortened = TRUE then only one prediction of length h is used.
     fc_fun <- function(i, y_subset_l, prediction_l, xreg_subset_l, ...) {
       prediction <- prediction_l[[i]]
       y_subset <- y_subset_l[[i]]
       xr = xreg_subset_l[[i]]
+      h_start <- ifelse(shortened == TRUE, h, 1)
       lapply(
-        prediction[1:h],
+        prediction[h_start:h],
         function(px){
           try(suppressWarnings(
             forecastfunction(px = px, x = y_subset, h = nrow(px), xr = xr, ...)
@@ -263,12 +268,13 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
     #From this point forward, process the lists using their order, which is different
     #than the raw indx due to window and initial inputs
     fc_l <- lapply(1:length(indx), fc_fun, y_subset_l=y_subset_l, prediction_l=prediction_l, xreg_subset_l=xreg_subset_l, ...)
-    #extract means from each predictor subset of indx
+    #extract values from each subset of h in each indx
     f_mean_long_l <- lapply(
       fc_l, 
       function(x){
+        h_end <- ifelse(shortened==TRUE,1,h)
         lapply(
-          1:h,
+          1:h_end,
           function(x2){
             if (!is.element("try-error", class(x[[x2]]))){x[[x2]]$mean}}
         )
@@ -280,18 +286,17 @@ tsCV_v2_vectorized <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL,
   }
   #process errors
   errors_fun <- function(i){
+    #indx[i] refers to the original row location
     f_tmp <- c(
       f_mean_l[[i]],
       rep(NA,h-length(f_mean_l[[i]]))
     )
-    tmp_result <- as.vector(y[i + (1:max_h)] - f_tmp)
-    result <- c(
+    tmp_result <- as.vector(y[indx[i] + (1:max_h)] - f_tmp)
+    e[indx[i], ] <<- c(
       tmp_result, 
       rep(NA,h-length(tmp_result)))
   }
-  errors_l <- lapply(1:length(indx), errors_fun)
-  window <- ifelse(is.null(window),0,window)
-  lapply(1:length(indx), function(x){e[x+window+initial,] <<- errors_l[[x]]})
+  lapply(1:length(indx), errors_fun)
   if (h == 1) {
     return(e[, 1L])
   } else {
@@ -307,32 +312,34 @@ Test using no `xreg`.  This allows the original function to be compared to the t
 my_fun <- function(x, h){forecast(Arima(x, order=c(2,0,0)), h=h)}
 
 e1_start <- proc.time()
-e1 <- tsCV(eng_coal_ts, my_fun, h=3)
+e1 <- tsCV(eng_coal_train_ts, my_fun, h=3)
 original_function_duration <- proc.time() - e1_start
 e2_start <- proc.time()
-e2 <- tsCV_v2(eng_coal_ts, my_fun, h=3)
+e2 <- tsCV_v2(eng_coal_train_ts, my_fun, h=3)
 fixed_duration <- proc.time() - e2_start
 e3_start <- proc.time()
-e3 <- tsCV_v2_vectorized(eng_coal_ts, my_fun, h=3)
+e3 <- tsCV_v2_vectorized(eng_coal_train_ts, my_fun, h=3)
 fixed_vector_duration <- proc.time() - e3_start
-all.equal(e1,e2, e2, tolerance=0.1)
+all.equal(data.frame(e1),data.frame(e2), data.frame(e2), tolerance=0.1, scale = NULL)
 original_function_duration
 fixed_duration
 fixed_vector_duration
+if(max(is.na(e1), is.na(e2), is.na(e3)) == length(e2)){print("Error: one result is all NA")}
 ```
 
-Test using `xreg`.  Note, the original function could not be compared, as it provides erroneous output
+Test using `xreg`.  Note, the original function could not be compared, as it provides erroneous output.  Also note, any additional arguments that wish to be passed to the `forecastfunction` must be explicity written out in the function itself.  In this example, I pass the `order` argument.  This is a useful note for when this function is used in hyper parameter training
 
 ```{r}
-my_fun <- function(px, x, h, xr){forecast(Arima(x, order=c(2,0,0), xreg=xr), h=h, xreg=px)}
+my_fun <- function(px, x, h, xr, o){forecast(Arima(x, order=o, xreg=xr), h=h, xreg=px)}
 e2xr_start <- proc.time()
-e2xr <- tsCV_v2(eng_coal_ts, my_fun, h=3, xreg=p_xreg)
+e2xr <- tsCV_v2(eng_coal_train_ts, my_fun, h=3, xreg=p_xreg_train, o=c(1,1,0), window = 10, initial = 10)
 fixed_duration <- proc.time() - e2xr_start
 e3xr_start <- proc.time()
-e3xr <- tsCV_v2_vectorized(eng_coal_ts, my_fun, h=3, xreg=p_xreg)
+e3xr <- tsCV_v2_vectorized(eng_coal_train_ts, my_fun, h=3, xreg=p_xreg_train, o=c(1,1,0), window = 10, initial = 10)
 fixed_vector_duration <- proc.time() - e3xr_start
-all.equal(e2xr, e2xr, tolerance=0.1)
+all.equal(data.frame(e2xr), data.frame(e3xr), tolerance=0.1, scale = NULL)
 fixed_duration
 fixed_vector_duration
+if(max(is.na(e2xr), is.na(e3xr)) == length(e2xr)){print("Error: one result is all NA")}
 ```
 
