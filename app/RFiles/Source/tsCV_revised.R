@@ -5,7 +5,7 @@
 # 'shortened = TRUE' and just one prediction at h will be run, but you will lose and partial 1:(h-1) prediction values
 # at that indx row.
 
-my_tsCV <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, console_print=NULL, ...) {
+my_tsCV <- function(y, forecastfunction, h=1, window=NULL, xreg=NULL, initial=0, ...) {
   y <- as.ts(y)
   n <- length(y)
   e <- ts(matrix(NA_real_, nrow = n, ncol = h))

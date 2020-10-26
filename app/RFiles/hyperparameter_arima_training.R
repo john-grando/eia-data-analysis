@@ -52,16 +52,18 @@ tst_e <- my_tsCV(
 data.frame(tst_e)
 
 registerDoMC(3)
-for(dr in c(FALSE, TRUE)){
-  for(w in c('NULL', 12, 24)){
-    if(w == "NULL"){w <- NULL}
-    if(!is.null(w)){w <- as.numeric(w)}
-    for(l in c('NULL', 'auto', 0)){
+for(w in c('NULL', 60)){
+  if(w == "NULL"){w <- NULL}
+  if(!is.null(w)){w <- as.numeric(w)}
+  for(l in c('NULL', 'auto', 0)){
+    for(dr in c(TRUE, FALSE)){
       for(ps in seq(0, 2, 1)){
         for(ds in seq(0, 2, 1)){
           for(qs in seq(0, 2, 1)){
             for(p in seq(0, 2, 1)){
               for(d in seq(0, 2, 1)){
+                #do not allow modeling with drift and d > 1
+                if(d > 1 & dr == TRUE){next}
                 e_df <- foreach(q = seq(0,2,1), .combine = rbind) %dopar% {
                   tmp_e <-  my_tsCV(
                     y = eng_coal_train_ts, 
