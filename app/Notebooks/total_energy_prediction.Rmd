@@ -102,7 +102,8 @@ electricity_net_generation_pivot_df <- electricity_net_generation_df %>%
 And now, we can take a first look at the net generation by fuel type.  It's immediately obvious that coal, natural gas, and nuclear power make up the major portion of consumed fuels, so we will group all others into a single category for simplicity.
 
 ```{r fig.width=12}
-color_values <- colorspace::diverge_hcl(n = 12, c = 100, l = c(20,90), power = 1)
+color_values <- colorspace::diverge_hcl(n = 12, h = c(180, 260), c = c(0, 260), l = c(0,100), power = 2)
+color_values_big <- colorspace::diverge_hcl(n = 20, h = c(180, 260), c = c(0, 260), l = c(0,100), power = 2)
 
 electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_df %>% 
     collect() %>% 
@@ -129,8 +130,9 @@ ggplot(
 ```
 
 ```{r}
+min_cutoff_date <- '2008-01-01'
 electricity_net_generation_pivot_reduced_df <- electricity_net_generation_df %>% 
-  filter(date > as.Date('2010-01-01')) %>% 
+  filter(date > as.Date(min_cutoff_date)) %>% 
   dplyr::mutate(
     name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
     name = tolower(name)) %>% 
@@ -192,11 +194,11 @@ eng_coal_ts <- ts(
   frequency = 12)
 ```
 
-From the seasonal plot wee see a rather consistent patter of peaks and valleys based on the month. The ACF plot is decaying, indicating that an arima differencing model may be appropriate.  The PACF plot show spikes at periodic lags, suggesting that differencing and/or moving average models may be appropriate.
+From the seasonal plot wee see a rather consistent pattern of peaks and valleys based on the month. The ACF plot is decaying, indicating that an arima differencing model may be appropriate, or could benefit from enabling drift.  The PACF plot show spikes at periodic lags, suggesting that differencing and/or moving average models may be appropriate as well.
 
 ```{r fig.width=12}
 ggseasonplot(eng_coal_ts, polar=TRUE) +
-  scale_color_manual(values=color_values) +
+  scale_color_manual(values=color_values_big) +
   ggtitle("Seasonal Coal Generation") +
   plot_theme
 ```
@@ -218,16 +220,7 @@ pacf_plot <- ggPacf(eng_coal_ts) +
   ggtitle("PACF")
 grid.arrange(acf_plot, pacf_plot, ncol=2)
 ```
-
-In order to try and create the most useful model, we will try to use the natural gas and nuclear power generation values as predictors for the ARIMA model as well.  As a first step, we will evaluate what happens when we let `auto.arima` pick the model for us.  We will hold out the last 12 predictions for later testing.
-
-Surprisingly, the non-seasonal differencing value was selected to be zero, which may be due to the regressors.  However, we do see that the box test has given us promising results that the residuals are not correlated.  Also, due tto the COVID pandemic, we will leave out the 2020 data from training and testing.
-
-```{r}
-
-  
-```
-
+In order to try and create the most useful model, we will try to use the natural gas power generation values as predictors for the ARIMA model as well.  In order to smooth out the predictors, the rolling mean value over the last 12 months was used in addition to the actual lagged generation values.  Also, due to the COVID pandemic, we will leave out the 2020 data from training and testing (that will likely be a different analysis in the future).
 
 ```{r}
 prediction_length <- 48
@@ -248,20 +241,25 @@ eng_coal_test_ts <- subset(eng_coal_ts, start = length(eng_coal_ts) - prediction
 #using rolling median
 p_rollmean_df <- electricity_net_generation_pivot_df %>% 
   arrange(date) %>% 
-  select(date, eng_natural_gas, eng_nuclear_electric_power) %>% 
+  select(
+    date, 
+    eng_natural_gas) %>%  
+#    eng_nuclear_electric_power) %>% 
   collect() %>% 
   mutate(
-    eng_natural_gas = zoo::rollmedianr(lag(eng_natural_gas), k = 13, fill = NA),
-    eng_nuclear_electric_power = zoo::rollmeanr(lag(eng_nuclear_electric_power), k = 13, fill = NA)
+    eng_natural_gas_rm = zoo::rollmeanr(lag(eng_natural_gas), k = 13, fill = NA),
+    eng_natural_gas = lag(eng_natural_gas)
+ #   eng_nuclear_electric_power = zoo::rollmeanr(lag(eng_nuclear_electric_power), k = 13, fill = NA)
   ) %>% 
-  filter(date > as.Date('2010-01-01')) %>% 
+  filter(date > as.Date(min_cutoff_date)) %>% 
   select(-date)
 
 p_xreg <- matrix(
   c(
-    p_rollmean_df %>% select('eng_natural_gas') %>% pull(),
-    p_rollmean_df %>% select('eng_nuclear_electric_power') %>% pull()),
-  ncol=2, 
+    p_rollmean_df %>% select('eng_natural_gas_rm') %>% pull(),
+    p_rollmean_df %>% select('eng_natural_gas') %>% pull()),
+    #p_rollmean_df %>% select('eng_nuclear_electric_power') %>% pull()),
+  ncol=dim(p_rollmean_df)[2], 
   byrow = FALSE
 )
 
@@ -270,22 +268,25 @@ p_xreg_test <- matrix(p_xreg[length(eng_coal_train_ts):length(eng_coal_ts),], nc
 
 #export for hyperparameter testing
 save(eng_coal_train_ts, p_xreg_train, file = paste("../RFiles/Data/total_energy_coal_data.RData", sep="/"))
+```
 
+As a first step, we will evaluate what happens when we let `auto.arima` pick the model for us.  We will hold out the last `r prediction_length` predictions for later testing.  Non-seasonal differencing was not selected to be used; however, it appears that drift was enabled with a seasonal moving average.  The regressors may have something to do with affecting which model was selected; however the standard error associated with each predictor does not indicate a strong influence.  Given all that, do see that the box test has given us promising results that the residuals are not correlated.  
+
+```{r}
 auto_fit <- auto.arima(eng_coal_train_ts, xreg = p_xreg_train)
-
 checkresiduals(auto_fit)
 summary(auto_fit)
 ```
 
-Now, let's give our own guess a shot by using the [time series cross validation ](https://otexts.com/fpp2/accuracy.html) (tsCV) from the [forecast](https://github.com/robjhyndman/forecast) package.  Note, I had to make a series of edits to make this function operat when provided with the `xreg` option.  Notes on these edits can be found [here](https://github.com/john-grando/eia-data-analysis/blob/master/app/Notebooks/tsCV_analysis.md).
+Now, let's give our own guess a shot where we used the [time series cross validation function](https://otexts.com/fpp2/accuracy.html) (tsCV) from the [forecast](https://github.com/robjhyndman/forecast) package.  This training focused on selecting the best model at the furthest prediction value (`r prediction_length`).  Note, I had to make a series of edits to make this function operate when provided with the `xreg` option.  Notes on these edits can be found [here](https://github.com/john-grando/eia-data-analysis/blob/master/app/Notebooks/tsCV_analysis.md).
 
-The results of the hyperparameter training did return favorable models for non-seasonal differencing models, so we will include that here
+The results of the hyperparameter training also included a drift term, but this time added a non-seasonal moving average term..  However, during testing, it appeared that the inclusion of the drift parameter was affecting the significance of the predictor.  By allowing the model the slowly decrease via the drift parameter, the inverse correlation between the natural gas consumption seemed to go unnoticed.  Therefore, the selected model, and a 'no drift' model were kept for analysis.  
 
 ```{r}
 hyper_fit <- Arima(
   eng_coal_train_ts, 
-  order=c(1,0,0),
-  seasonal=c(0,1,2),
+  order=c(1,0,1),
+  seasonal=c(0,1,1),
   lambda = NULL,
   include.drift = TRUE,
   xreg=p_xreg_train)
@@ -294,7 +295,20 @@ checkresiduals(hyper_fit)
 summary(hyper_fit)
 ```
 
-Now we can test our models against each other as well as a few other prediction methods for comparison.  Specifically, we will add a seasonal naive predictor and an `auto.arima` model using no predictors
+```{r}
+hyper_fit_no_drift <- Arima(
+  eng_coal_train_ts, 
+  order=c(1,0,1),
+  seasonal=c(0,1,1),
+  lambda = NULL,
+  include.drift = FALSE,
+  xreg=p_xreg_train)
+
+checkresiduals(hyper_fit_no_drift)
+summary(hyper_fit_no_drift)
+```
+
+Now that the two complex models have been trained, we can test them against each other as well as a few other simpler prediction methods for comparison.  Specifically, we will add a seasonal naive predictor and an `auto.arima` model using no predictors
 
 ```{r}
 auto_simple_fit <- auto.arima(eng_coal_train_ts)
@@ -302,15 +316,21 @@ checkresiduals(auto_simple_fit)
 summary(auto_simple_fit)
 ```
 
+Our selected hyperparameter model performs the best; however, not by much.  Also, as showin in the summary plots above, the predictor variables appear to have a very weak influence on the model and barely help the hyperparameter trained model fit outperform the simple ARIMA model.
 
 ```{r}
-
 hyper_fit_df <- hyper_fit %>% 
   forecast(h = length(eng_coal_test_ts), xreg=p_xreg_test) %>% 
   accuracy(eng_coal_test_ts) %>% 
   data.frame() %>%  
   tibble::rownames_to_column(var = "model") %>% 
   mutate(model = paste("Hyper",model))
+hyper_fit_no_drift_df <- hyper_fit_no_drift %>% 
+  forecast(h = length(eng_coal_test_ts), xreg=p_xreg_test) %>% 
+  accuracy(eng_coal_test_ts) %>% 
+  data.frame() %>%  
+  tibble::rownames_to_column(var = "model") %>% 
+  mutate(model = paste("Hyper No Drift",model))
 auto_fit_df <- auto_fit %>% 
   forecast(h = length(eng_coal_test_ts), xreg=p_xreg_test) %>% 
   accuracy(eng_coal_test_ts) %>% 
@@ -329,19 +349,19 @@ snaive_fit_df <- snaive(y = eng_coal_train_ts, h = length(eng_coal_test_ts)) %>%
   tibble::rownames_to_column(var = "model") %>% 
   mutate(model = paste("Seasonal Naive",model))
 
-
 hyper_fit_df %>% rbind(
+  hyper_fit_no_drift_df,
   auto_fit_df,
   auto_simple_fit_df,
   snaive_fit_df
 ) %>% 
   filter(grepl('test', model, ignore.case = TRUE)) %>% 
-  arrange(RMSE)
+  arrange(RMSE) %>% 
+  kable('html') %>% 
+  kable_styling(bootstrap_options = "striped", position = 'center', full_width = TRUE)
 ```
 
-
-
-And now we can plot our predictions
+Now, we can plot the predictions of the four models we created in this analysis.
 
 ```{r fig.width=12, warning=FALSE, message=FALSE}
 #Adjust future predictors
@@ -361,205 +381,91 @@ hyper_forecast <- forecast(
   xreg=p_xreg_test
 )
 
-autoplot(auto_simple_forecast) +
+hyper_no_drift_forecast <- forecast(
+  hyper_fit_no_drift,
+  h = prediction_length, 
+  xreg=p_xreg_test
+)
+
+base_plot <- autoplot(
+  ts(
+      c(p_xreg[,1]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'mean natural gas') +
+  autolayer(
+    ts(
+      c(p_xreg[,2]),
+      start = c(
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
+    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
+      frequency = 12),
+    series = 'actual natural gas') + 
+  autolayer(
+    snaive(y = eng_coal_train_ts, length(eng_coal_test_ts)),
+    PI = FALSE,
+    series = "naive") +
+  labs(x="Date", y="Million kWh") +
+  scale_x_continuous(
+    labels=function(x){as.integer(x)},
+    limits=c(
+      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-5, 
+      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1),
+    breaks = seq(
+      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-5, 
+      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1, 
+      1)) +
+  autolayer(
+    eng_coal_ts,
+    series = "actual coal"
+  ) +
+  plot_theme +
+  scale_color_viridis_d()
+
+base_plot +
+  autolayer(auto_simple_forecast, alpha = 0.3) +
   autolayer(
     auto_simple_forecast,
     series = "Prediction",
     PI = FALSE) +
-  autolayer(
-    ts(
-      c(p_xreg[,1]),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'natural gas') +
-  autolayer(
-    ts(
-      c(p_xreg[,2]),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'nuclear') +
-  autolayer(
-    eng_coal_test_ts,
-    series = "actual coal"
-  ) + 
-  autolayer(
-    snaive(y = eng_coal_train_ts, length(eng_coal_test_ts)),
-    PI = FALSE,
-    series = "naive") +
-  labs(x="Date", y="Million kWh") +
-  scale_x_continuous(
-    labels=function(x){as.integer(x)},
-    limits=c(
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-8, 
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1),
-    breaks = seq(
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-8, 
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1, 
-      1)) +
   ggtitle(
     'Auto Arima Model - No Predictors', 
-    subtitle = as.character(auto_simple_fit)) +
-  plot_theme
+    subtitle = as.character(auto_simple_fit))
 
-
-
-autoplot(auto_forecast) +
+base_plot +
+  autolayer(auto_forecast, alpha = 0.3) +
   autolayer(
     auto_forecast,
     series = "Prediction",
     PI = FALSE) +
-  autolayer(
-    ts(
-      c(p_xreg[,1]),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'natural gas') +
-  autolayer(
-    ts(
-      c(p_xreg[,2]),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'nuclear') +
-  autolayer(
-    eng_coal_test_ts,
-    series = "actual coal"
-  ) + 
-  autolayer(
-    snaive(y = eng_coal_train_ts, length(eng_coal_test_ts)),
-    PI = FALSE,
-    series = "naive") +
-  labs(x="Date", y="Million kWh") +
-  scale_x_continuous(
-    labels=function(x){as.integer(x)},
-    limits=c(
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-8, 
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1),
-    breaks = seq(
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-8, 
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1, 
-      1)) +
   ggtitle(
     'Auto Arima Model', 
     subtitle = as.character(auto_fit)) +
   plot_theme
 
-autoplot(hyper_forecast) +
+base_plot + 
+  autolayer(hyper_forecast, alpha = 0.3) +
   autolayer(
     hyper_forecast,
     series = "Prediction",
     PI = FALSE) +
-  autolayer(
-    ts(
-      c(p_xreg[,1]),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'natural gas') +
-  autolayer(
-    ts(
-      c(p_xreg[,2]),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'nuclear') +
-  autolayer(
-    eng_coal_test_ts,
-    series = "actual coal"
-  ) + 
-  autolayer(
-    snaive(y = eng_coal_train_ts, length(eng_coal_test_ts)),
-    PI = FALSE,
-    series = "naive") +
-  labs(x="Date", y="Million kWh") +
-  scale_x_continuous(
-    labels=function(x){as.integer(x)},
-    limits=c(
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-8, 
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1),
-    breaks = seq(
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))-8, 
-      as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y"))+1, 
-      1)) +
   ggtitle(
     'Hyperparameter Model', 
     subtitle = as.character(hyper_fit)) +
   plot_theme
-```
 
-```{r eval=FALSE}
-
-amplifier <- 1
-n_amplifier <- 1
-
-tst <- tail(
-  electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull(), prediction_length)
-new_tst <- tst * tst[1] / tail(tst,1) * seq(from = 1, to = amplifier, length.out = prediction_length)
-new_n_tst <- tail(
-  electricity_net_generation_pivot_reduced_df %>% 
-    select('eng_nuclear_electric_power') %>% 
-    pull(), 
-  prediction_length) * seq(from = 1, to = n_amplifier, length.out = prediction_length)
-
-new_p_xreg <- matrix(
-  c(
-    new_tst,
-    new_n_tst),
-  ncol=2, 
-  byrow = FALSE
-)
-
-
-#temporary save of plotting objects
+base_plot + 
+  autolayer(hyper_no_drift_forecast, alpha = 0.3) +
   autolayer(
-    ts(
-      c(electricity_net_generation_pivot_reduced_df %>% select('eng_natural_gas') %>% pull()),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'natural gas') +
-  autolayer(
-    ts(
-      new_tst,
-      start = c(
-    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'natural gas prediction'
-  ) +
-  autolayer(
-    ts(
-      c(electricity_net_generation_pivot_reduced_df %>% select('eng_nuclear_electric_power') %>% pull()),
-      start = c(
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'nuclear') +
-  autolayer(
-    ts(
-      new_n_tst,
-      start = c(
-    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%Y")), 
-    as.numeric(format(date_limit_reduced_df["max_date"][[1]], "%m"))),
-      frequency = 12),
-    series = 'nuclear prediction'
-  ) +
-  coord_cartesian(xlim=c(2010,2025), ylim = c(0,2.5e+05)) +
-  scale_color_manual(values=color_values) +
-  labs(x = "Date", y = "Million kWh") +
+    hyper_no_drift_forecast,
+    series = "Prediction",
+    PI = FALSE) +
   ggtitle(
-    as.character(auto_fit), 
-    subtitle = paste("\nAmplification (NG): ", amplifier, ", Amplification (Nuclear): ", n_amplifier)) +
+    'Hyperparameter Model w/o Drift', 
+    subtitle = as.character(hyper_fit)) +
   plot_theme
 ```
 
+As we can see, the differences between models is minimal, which means we should lean towards selecting the simple arima model with no predictors until we can find some significant attributes that would reduce the error.  Given that the simple model has less than a 9% mean absolute percentage error, it seems as though the decrease in consumption of coal is on a steady decline without any correlated fluctuations to the natural gas consumption.  However, note that when drift is removed from the model that the predictor becomes much more prevalent in the model.  Therefore, the usage of natural gas might be useful, if additional feature engineering is performed or other significant predictors are included that remove some of the noise in the model.  In general, there are multiple options to choose from this analysis that will give relatively good predictions, and the selection of one over the other may depend on the purposes for it's future use.
