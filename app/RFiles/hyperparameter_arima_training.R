@@ -56,7 +56,7 @@ for(w in c('NULL', 60)){
   if(w == "NULL"){w <- NULL}
   if(!is.null(w)){w <- as.numeric(w)}
   for(l in c('NULL', 'auto', 0)){
-    for(dr in c(TRUE, FALSE)){
+    for(dr in c(FALSE, TRUE)){
       for(ps in seq(0, 2, 1)){
         for(ds in seq(0, 2, 1)){
           for(qs in seq(0, 2, 1)){
@@ -65,11 +65,12 @@ for(w in c('NULL', 60)){
                 #do not allow modeling with drift and d > 1
                 if(d > 1 & dr == TRUE){next}
                 e_df <- foreach(q = seq(0,2,1), .combine = rbind) %dopar% {
-                  tmp_e <-  my_tsCV(
+                  tmp_e <-  my_tsCV_vectorized(
                     y = eng_coal_train_ts, 
                     forecastfunction = forecast_fun,
                     h = 24,
                     window = w,
+                    shortened = TRUE,
                     p_sub = p,
                     d_sub = d,
                     q_sub = q,
@@ -96,11 +97,11 @@ for(w in c('NULL', 60)){
                 print('latest model')
                 print(data.frame(e_df) %>%  
                   select(model_name, run_time, h.12_mae, h.24_mae, h.12_rmse, h.24_rmse) %>% 
-                  arrange(h.24_mae))
+                  arrange(h.24_rmse))
                 print('all models')
                 print(model_metrics_arima_df %>% 
                   select(model_name, run_time, h.12_mae, h.24_mae, h.12_rmse, h.24_rmse) %>% 
-                  arrange(h.24_mae) %>% 
+                  arrange(h.24_rmse) %>% 
                   head(10))
                 flush.console()
               }

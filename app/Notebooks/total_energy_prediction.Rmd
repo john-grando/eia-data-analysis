@@ -130,7 +130,7 @@ ggplot(
 ```
 
 ```{r}
-min_cutoff_date <- '2008-01-01'
+min_cutoff_date <- '2009-01-01'
 electricity_net_generation_pivot_reduced_df <- electricity_net_generation_df %>% 
   filter(date > as.Date(min_cutoff_date)) %>% 
   dplyr::mutate(
