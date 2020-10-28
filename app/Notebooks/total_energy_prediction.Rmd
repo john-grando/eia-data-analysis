@@ -102,7 +102,7 @@ electricity_net_generation_pivot_df <- electricity_net_generation_df %>%
 And now, we can take a first look at the net generation by fuel type.  It's immediately obvious that coal, natural gas, and nuclear power make up the major portion of consumed fuels, so we will group all others into a single category for simplicity.
 
 ```{r fig.width=12}
-color_values <- colorspace::diverge_hcl(n = 12, h = c(180, 260), c = c(0, 260), l = c(0,100), power = 2)
+color_values <- colorspace::diverge_hcl(n = 12, h = c(180, 260), c = c(0, 260), l = c(0,80), power = 2)
 color_values_big <- colorspace::diverge_hcl(n = 20, h = c(180, 260), c = c(0, 260), l = c(0,100), power = 2)
 
 electricity_net_generation_pivot_melted_df <- electricity_net_generation_pivot_df %>% 
@@ -176,7 +176,7 @@ ggplot(
   plot_theme
 ```
 
-So, let's see if we can predict the future of coal consumption.  Note, this is very much a simple analysis and there are many factors that contribute to the various fuels usages, inclding political and economical.  For this analysis, we will try to fit the time series to an ARIMA model, given how flexible it can be in hyperparamter testing.
+So, let's see if we can predict the future of coal consumption.  Note, this is very much a simple analysis and there are many factors that contribute to the various fuels usages, inclding political and economical.  For this analysis, we will try to fit the time series to an ARIMA model, given how flexible it can be in hyperparamter testing.  Also, predictor variables can be passed to these models via the `xreg` option, which we hope will help the model accuracy.
 
 ```{r}
 eng_coal_ts <- ts(
@@ -220,7 +220,8 @@ pacf_plot <- ggPacf(eng_coal_ts) +
   ggtitle("PACF")
 grid.arrange(acf_plot, pacf_plot, ncol=2)
 ```
-In order to try and create the most useful model, we will try to use the natural gas power generation values as predictors for the ARIMA model as well.  In order to smooth out the predictors, the rolling mean value over the last 12 months was used in addition to the actual lagged generation values.  Also, due to the COVID pandemic, we will leave out the 2020 data from training and testing (that will likely be a different analysis in the future).
+
+In order to try and create the most useful model, we will try to use the natural gas power generation values as predictors for the ARIMA model as well.  Some variations on this data were tested, namely the rolling mean value over the last 12 months and lagged generation values.  Only one predictor was selected to avoid any multicollinearity issues.  Also, due to the COVID pandemic, we will leave out the 2020 data from training and testing (that will likely be a different analysis in the future).
 
 ```{r}
 prediction_length <- 48
@@ -247,19 +248,21 @@ p_rollmean_df <- electricity_net_generation_pivot_df %>%
 #    eng_nuclear_electric_power) %>% 
   collect() %>% 
   mutate(
-    eng_natural_gas_rm = zoo::rollmeanr(lag(eng_natural_gas), k = 13, fill = NA),
+    #eng_natural_gas_rm = zoo::rollmeanr(lag(eng_natural_gas), k = 13, fill = NA),
     eng_natural_gas = lag(eng_natural_gas)
  #   eng_nuclear_electric_power = zoo::rollmeanr(lag(eng_nuclear_electric_power), k = 13, fill = NA)
   ) %>% 
   filter(date > as.Date(min_cutoff_date)) %>% 
-  select(-date)
-
+  select(-date) 
+  
+  
+#only pick one predictor to avoid collinearity issues
 p_xreg <- matrix(
   c(
-    p_rollmean_df %>% select('eng_natural_gas_rm') %>% pull(),
+    #p_rollmean_df %>% select('eng_natural_gas_rm') %>% pull()),
     p_rollmean_df %>% select('eng_natural_gas') %>% pull()),
     #p_rollmean_df %>% select('eng_nuclear_electric_power') %>% pull()),
-  ncol=dim(p_rollmean_df)[2], 
+  ncol=1, 
   byrow = FALSE
 )
 
@@ -285,8 +288,8 @@ The results of the hyperparameter training also included a drift term, but this 
 ```{r}
 hyper_fit <- Arima(
   eng_coal_train_ts, 
-  order=c(1,0,1),
-  seasonal=c(0,1,1),
+  order=c(2,0,1),
+  seasonal=c(1,0,2),
   lambda = NULL,
   include.drift = TRUE,
   xreg=p_xreg_train)
@@ -298,8 +301,8 @@ summary(hyper_fit)
 ```{r}
 hyper_fit_no_drift <- Arima(
   eng_coal_train_ts, 
-  order=c(1,0,1),
-  seasonal=c(0,1,1),
+  order=c(2,0,1),
+  seasonal=c(2,1,1),
   lambda = NULL,
   include.drift = FALSE,
   xreg=p_xreg_train)
@@ -397,7 +400,7 @@ base_plot <- autoplot(
     series = 'mean natural gas') +
   autolayer(
     ts(
-      c(p_xreg[,2]),
+      c(p_xreg),
       start = c(
     as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%Y")), 
     as.numeric(format(date_limit_reduced_df["min_date"][[1]], "%m"))),
@@ -464,8 +467,8 @@ base_plot +
     PI = FALSE) +
   ggtitle(
     'Hyperparameter Model w/o Drift', 
-    subtitle = as.character(hyper_fit)) +
+    subtitle = as.character(hyper_fit_no_drift)) +
   plot_theme
 ```
 
-As we can see, the differences between models is minimal, which means we should lean towards selecting the simple arima model with no predictors until we can find some significant attributes that would reduce the error.  Given that the simple model has less than a 9% mean absolute percentage error, it seems as though the decrease in consumption of coal is on a steady decline without any correlated fluctuations to the natural gas consumption.  However, note that when drift is removed from the model that the predictor becomes much more prevalent in the model.  Therefore, the usage of natural gas might be useful, if additional feature engineering is performed or other significant predictors are included that remove some of the noise in the model.  In general, there are multiple options to choose from this analysis that will give relatively good predictions, and the selection of one over the other may depend on the purposes for it's future use.
+As we can see, the differences between models is minimal, which means we should lean towards selecting the simple arima model with no predictors until we can find some significant attributes that would reduce the error.  Given that the simple model has less than a 9% mean absolute percentage error, it seems as though the decrease in consumption of coal is on a steady decline without any correlated fluctuations to the natural gas consumption.  Therefore, it is unclear if using natural gas consumption as a predictor is useful, but it does not appear to be in this simple model.  If additional feature engineering is performed or other significant predictors are included, then that may remove some of the noise.  In general, there are multiple options to choose from this analysis that will give relatively good predictions, and the selection of one over the other may depend on the purposes for it's future use.  Obviously, other model types could be chosen; however, it seems as though more meaningful predictors would be the key to acheiving higher levels of accuracy.

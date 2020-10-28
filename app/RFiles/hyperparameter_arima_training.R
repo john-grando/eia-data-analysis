@@ -1,17 +1,17 @@
 #Hyperparameter training for model
 
 #Source
-source('RFiles/Source/tsCV_revised.R')
+source('./Source/tsCV_revised.R')
 
 #Library
 library(doMC)
 library(forecast)
 library(dplyr)
 
-load("RFiles/Data/total_energy_coal_data.RData")
+load("./Data/total_energy_coal_data.RData")
 
 #load file if exists
-destfile <- 'RFiles/Data/hyperparameters.RData'
+destfile <- './Data/hyperparameters.RData'
 if(file.exists(destfile)){
   load(destfile)
 }

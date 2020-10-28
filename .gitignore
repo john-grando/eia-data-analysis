@@ -3,6 +3,7 @@
 *.log
 app/Notebooks/metastore_db/*
 app/Notebooks/logs/*
+app/Notebooks/**/*.png
 !app/Notebooks/logs/*.txt
 EIAElec/*.json
 EIATotal/*.json
