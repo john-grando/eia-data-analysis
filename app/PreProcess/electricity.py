@@ -45,11 +45,24 @@ def main(args = None):
     global MySpark
     MySpark = MySpark or MyPySpark(master = 'local[3]')
 
+
+ # |-- data: array (nullable = true)
+ # |    |-- element: array (containsNull = true)
+ # |    |    |-- element: string (containsNull = true)
+
+    #make schema
+    # int_fields_l = []
+    # str_fields_l = ["copyright", "description", "end", "f", "geography", "iso3166", "lat", "latlon", "lon name", "series_id", "source", "start", "units", "data", "last_updated"]
+    # timestamp_fields_l = ["last_updated",]
+    # str_fields_schema_l = [StructField(field_name, StringType(), nullable=True) for field_name in str_fields_l]
+    # timestamp_schema_l = [StructField(field_name, StringType(), nullable=True) for field_name in timestamp_fields_l]
+    # total_schema = StructType(str_fields_schema_l)
+    # print(total_schema)
     electricity_df = MySpark\
         .spark\
         .read\
-        .option("inferSchema", "true")\
-        .json('/EIAElec/ELEC.json')
+        .json('/EIAElec/ELEC.json')\
+        .limit(5000)
 
     electricity_df.printSchema()
 
@@ -61,10 +74,10 @@ def main(args = None):
     electricity_df.limit(10).toPandas().to_csv('tst.csv')
 
     #save plans to ExplainFiles directory by default
-    MySpark.explain_to_file(
-        df = total_energy_df,
-        description = 'preprocess_electricity',
-        stamp = '')
+    # MySpark.explain_to_file(
+    #     df = total_energy_df,
+    #     description = 'preprocess_electricity',
+    #     stamp = '')
 
 
 
