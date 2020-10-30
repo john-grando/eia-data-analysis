@@ -408,24 +408,36 @@ suppressWarnings(suppressMessages(library(tidyr)))</code></pre>
 <pre class="r"><code>sc &lt;- sparklyr::spark_connect(
   master = &#39;local[2]&#39;, 
   spark_home = Sys.getenv(&quot;SPARK_HOME&quot;))
-total_energy_df &lt;- sparklyr::spark_read_parquet(
+total_energy_fact_df &lt;- sparklyr::spark_read_parquet(
   sc = sc, 
-  name = &#39;total_energy_df&#39;, 
-  path = &quot;hdfs://localhost:9000/Processed/TotalEnergyDF&quot;)
-total_energy_df &lt;- select(
-    total_energy_df, 
-    &quot;date&quot;, 
-    &quot;name&quot;, 
-    &quot;value&quot;, 
-    &quot;units&quot;) %&gt;% 
+  name = &#39;total_energy_fact_df&#39;, 
+  path = &quot;hdfs://localhost:9000/Processed/TotalEnergyFactDF&quot;)
+
+total_energy_dim_df &lt;- sparklyr::spark_read_parquet(
+  sc = sc, 
+  name = &#39;total_energy_dim_df&#39;, 
+  path = &quot;hdfs://localhost:9000/Processed/TotalEnergyDimDF&quot;) %&gt;% select(
+    &quot;name&quot;,
+    &quot;units&quot;,
+    &quot;series_id&quot;
+  )
+
+total_energy_df &lt;- total_energy_dim_df %&gt;% 
+  filter(name %rlike% &quot;(Electricity Net Generation From.*All Sectors, Monthly$)&quot;) %&gt;% 
+  sdf_broadcast() %&gt;% 
+  left_join(
+    total_energy_fact_df,
+    by = &quot;series_id&quot;,
+    how = &quot;left&quot;
+  ) %&gt;% 
   mutate(
     date = as.Date(date),
-    value = as.numeric(value)) %&gt;% 
+    value = as.numeric(value)
+  ) %&gt;% 
   arrange(date)</code></pre>
 <p>We will cut off any measurements older than 1990, as many records are missing for certain categories, and the does not appear to be useful in its current form. After a quick check, we see that there are no null values in the fields we selected.</p>
 <pre class="r"><code>electricity_net_generation_df &lt;- total_energy_df %&gt;% 
-  dplyr::filter(date &gt;= as.Date(&quot;1990-01-01&quot;) &amp; date &lt; as.Date(&quot;2020-01-01&quot;)) %&gt;% 
-  dplyr::filter(name %rlike% &quot;(Electricity Net Generation From.*All Sectors$)&quot;)</code></pre>
+  dplyr::filter(date &gt;= as.Date(&quot;1990-01-01&quot;) &amp; date &lt; as.Date(&quot;2020-01-01&quot;))</code></pre>
 <pre class="r"><code>electricity_net_generation_df %&gt;% 
   dplyr::filter(is.na(value) | value == &#39;&#39;) %&gt;% 
   dplyr::count(name = &quot;null fields&quot;) %&gt;% 
@@ -449,7 +461,7 @@ total_energy_df &lt;- select(
 ## This warning is displayed only once per session.</code></pre>
 <pre class="r"><code>electricity_net_generation_pivot_df &lt;- electricity_net_generation_df %&gt;% 
   dplyr::mutate(
-    name = regexp_replace(name, &#39;^Electricity Net Generation From (.*), All Sectors$&#39;, &#39;eng_$1&#39;),
+    name = regexp_replace(name, &#39;^Electricity Net Generation From (.*), All Sectors, Monthly$&#39;, &#39;eng_$1&#39;),
     name = tolower(name)
   ) %&gt;% 
   mutate(
@@ -489,7 +501,7 @@ ggplot(
 electricity_net_generation_pivot_reduced_df &lt;- electricity_net_generation_df %&gt;% 
   filter(date &gt; as.Date(min_cutoff_date)) %&gt;% 
   dplyr::mutate(
-    name = regexp_replace(name, &#39;^Electricity Net Generation From (.*), All Sectors$&#39;, &#39;eng_$1&#39;),
+    name = regexp_replace(name, &#39;^Electricity Net Generation From (.*), All Sectors, Monthly$&#39;, &#39;eng_$1&#39;),
     name = tolower(name)) %&gt;% 
   mutate(
     name = regexp_replace(name, &#39; &#39;, &#39;_&#39;)

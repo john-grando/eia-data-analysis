@@ -23,7 +23,8 @@ class MyLogger():
         self,
         logging_file = 'logging.conf',
         logger_name = 'base_logger',
-        log_file_list = ['app',]):
+        log_file_list = ['app',],
+        log_file_location = os.path.join(py_file_path, 'app', 'logs', 'app.log')):
         #None may be passed from kwargs arguments in other classes
         #which means a base logger needs to be specified
         logger_name = logger_name or 'base_logger'
@@ -57,7 +58,7 @@ class MyLogger():
                     self.logger = logging.getLogger()
                     self.logger.setLevel(logging.ERROR)
                 else:
-                    fileConfig(os.path.join(py_file_path,'logging.conf'))
+                    fileConfig(os.path.join(py_file_path,'logging.conf'), defaults = {"logfilename":log_file_location})
                     if logger_name in logging.root.manager.loggerDict.keys():
                         self.logger = logging.getLogger(logger_name)
                     else:

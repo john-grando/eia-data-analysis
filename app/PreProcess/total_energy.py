@@ -57,32 +57,40 @@ def main(args = None):
     #     )
     # )
     #remove .option('inferSchema') and add schema as second argument to .json for explicit structure
-    total_energy_df = MySpark\
+    #records are comprised of monthly, quarterly, and annual data
+    #return only monthly data as the others can be calculated later
+    #and it will save space since most of the operations here are
+    #done on a local cluster to save on cost.
+    total_energy_raw_df = MySpark\
         .spark\
         .read\
         .option("inferSchema", "true")\
         .json('/EIATotal/TOTAL.json')
-    #filter and cleanse data
-    #records are comprised of monthly, quarterly, and annual data
-    #return only monthly data as the others can be calculated later
-    #also remove the 'monthly' indicator in the series name and other
-    #extraneous information
-    #cleanse remaining columns
-    total_energy_df = total_energy_df\
+
+    total_energy_raw_monthly_df = total_energy_raw_df\
         .filter(
-            total_energy_df["f"] == 'M')\
+            total_energy_raw_df["f"] == 'M')\
+
+    #filter and cleanse data
+    #separate into dimension and fact tables
+    total_energy_dim_df = total_energy_raw_monthly_df\
+        .drop(
+            "data"
+        )\
         .withColumn(
-            "name",
-            pysF.regexp_replace(
-                "name",
-                "^(.*)(, Monthly)$",
-                r"$1"))\
-        .withColumn(
+            "childseries",
+            pysF.concat_ws(", ", pysF.col("childseries")))\
+        .replace(
+            {
+                "":None,
+                "null":None
+            })
+
+    total_energy_fact_df = total_energy_raw_monthly_df\
+        .select(
             "series_id",
-            pysF.regexp_replace(
-                "series_id",
-                "^[^.]+\.([^.]+)(\..*)*",
-                r"$1"))\
+            "data"
+        )\
         .withColumn(
             "data_exploded",
             pysF.explode("data"))\
@@ -98,13 +106,8 @@ def main(args = None):
         .withColumn(
             "value",
             pysF.col("data_exploded").getItem(1))\
-        .withColumn(
-            "data",
-            pysF.concat_ws(", ", pysF.col("data_exploded")))\
-        .withColumn(
-            "childseries",
-            pysF.concat_ws(", ", pysF.col("childseries")))\
         .drop(
+            "data",
             "data_exploded",
             "date_raw")\
         .replace(
@@ -114,24 +117,40 @@ def main(args = None):
             })
     #save plans to ExplainFiles directory by default
     MySpark.explain_to_file(
-        df = total_energy_df,
-        description = 'preprocess_total_energy',
+        df = total_energy_dim_df,
+        description = 'preprocess_total_energy_dimensions',
+        stamp = '')
+
+    MySpark.explain_to_file(
+        df = total_energy_fact_df,
+        description = 'preprocess_total_energy_facts',
         stamp = '')
 
     #keep data for future processing
     #use parquet because analsis and ML processes
     #will only pull specific columns, so columnar save
     #format is preferred.
-    total_energy_df.write.parquet(
-        path = '/Processed/TotalEnergyDF',
-        mode = 'overwrite')
+    total_energy_dim_df.write\
+        .parquet(
+            path = '/Processed/TotalEnergyDimDF',
+            mode = 'overwrite')
+
+    total_energy_fact_df.write\
+        .parquet(
+            path = '/Processed/TotalEnergyFactDF',
+            mode = 'overwrite')
 
     if args.display_test:
         try:
             pd.set_option('display.max_columns', 20)
+            MySpark.logger.info("Dimension Table")
             MySpark.logger.info("Sample:\n%sDataframe:\n%s",
-            total_energy_df.limit(10).toPandas().dtypes,
-            total_energy_df.limit(5).toPandas().head())
+            total_energy_dim_df.limit(10).toPandas().dtypes,
+            total_energy_dim_df.limit(5).toPandas().head())
+            MySpark.logger.info("Fact Table")
+            MySpark.logger.info("Sample:\n%sDataframe:\n%s",
+            total_energy_fact_df.limit(10).toPandas().dtypes,
+            total_energy_fact_df.limit(5).toPandas().head())
         finally:
             pd.set_option('display.max_columns', 0)
 
@@ -141,7 +160,10 @@ def main(args = None):
             key = 'processed')
         S3O.sync_hdfs_to_s3(
             hdfs_site = 'hdfs://localhost:9000',
-            hdfs_folder = 'Processed/TotalEnergyDF')
+            hdfs_folder = 'Processed/TotalEnergyDimDF')
+        S3O.sync_hdfs_to_s3(
+            hdfs_site = 'hdfs://localhost:9000',
+            hdfs_folder = 'Processed/TotalEnergyFactDF')
 
 if __name__ == "__main__":
     main()

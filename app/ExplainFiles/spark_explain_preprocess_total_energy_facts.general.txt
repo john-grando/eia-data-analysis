@@ -1,0 +1,38 @@
+== Parsed Logical Plan ==
+Project [CASE WHEN (series_id#16 = ) THEN cast(null as string) WHEN (series_id#16 = null) THEN cast(null as string) ELSE series_id#16 END AS series_id#129, date#110, CASE WHEN (value#116 = ) THEN cast(null as string) WHEN (value#116 = null) THEN cast(null as string) ELSE value#116 END AS value#130]
++- Project [series_id#16, date#110, value#116]
+   +- Project [series_id#16, data#9, data_exploded#101, date_raw#105, date#110, data_exploded#101[1] AS value#116]
+      +- Project [series_id#16, data#9, data_exploded#101, date_raw#105, to_date(cast(unix_timestamp('date_raw, yyyyMM, None) as timestamp), None) AS date#110]
+         +- Project [series_id#16, data#9, data_exploded#101, data_exploded#101[0] AS date_raw#105]
+            +- Project [series_id#16, data#9, data_exploded#101]
+               +- Generate explode(data#9), false, [data_exploded#101]
+                  +- Project [series_id#16, data#9]
+                     +- Filter (f#11 = M)
+                        +- Relation[category_id#7,childseries#8,data#9,end#10,f#11,last_updated#12,name#13,notes#14,parent_category_id#15,series_id#16,start#17,units#18] json
+
+== Analyzed Logical Plan ==
+series_id: string, date: date, value: string
+Project [CASE WHEN (series_id#16 = ) THEN cast(null as string) WHEN (series_id#16 = null) THEN cast(null as string) ELSE series_id#16 END AS series_id#129, date#110, CASE WHEN (value#116 = ) THEN cast(null as string) WHEN (value#116 = null) THEN cast(null as string) ELSE value#116 END AS value#130]
++- Project [series_id#16, date#110, value#116]
+   +- Project [series_id#16, data#9, data_exploded#101, date_raw#105, date#110, data_exploded#101[1] AS value#116]
+      +- Project [series_id#16, data#9, data_exploded#101, date_raw#105, to_date(cast(unix_timestamp('date_raw, yyyyMM, None) as timestamp), None) AS date#110]
+         +- Project [series_id#16, data#9, data_exploded#101, data_exploded#101[0] AS date_raw#105]
+            +- Project [series_id#16, data#9, data_exploded#101]
+               +- Generate explode(data#9), false, [data_exploded#101]
+                  +- Project [series_id#16, data#9]
+                     +- Filter (f#11 = M)
+                        +- Relation[category_id#7,childseries#8,data#9,end#10,f#11,last_updated#12,name#13,notes#14,parent_category_id#15,series_id#16,start#17,units#18] json
+
+== Optimized Logical Plan ==
+Project [CASE WHEN (series_id#16 = ) THEN null WHEN (series_id#16 = null) THEN null ELSE series_id#16 END AS series_id#129, cast(cast(unix_timestamp(data_exploded#101[0], yyyyMM, Some(America/New_York)) as timestamp) as date) AS date#110, CASE WHEN (data_exploded#101[1] = ) THEN null WHEN (data_exploded#101[1] = null) THEN null ELSE data_exploded#101[1] END AS value#130]
++- Generate explode(data#9), [1], false, [data_exploded#101]
+   +- Project [series_id#16, data#9]
+      +- Filter (isnotnull(f#11) AND (f#11 = M))
+         +- Relation[category_id#7,childseries#8,data#9,end#10,f#11,last_updated#12,name#13,notes#14,parent_category_id#15,series_id#16,start#17,units#18] json
+
+== Physical Plan ==
+*(2) Project [CASE WHEN (series_id#16 = ) THEN null WHEN (series_id#16 = null) THEN null ELSE series_id#16 END AS series_id#129, cast(cast(unix_timestamp(data_exploded#101[0], yyyyMM, Some(America/New_York)) as timestamp) as date) AS date#110, CASE WHEN (data_exploded#101[1] = ) THEN null WHEN (data_exploded#101[1] = null) THEN null ELSE data_exploded#101[1] END AS value#130]
++- Generate explode(data#9), [series_id#16], false, [data_exploded#101]
+   +- *(1) Project [series_id#16, data#9]
+      +- *(1) Filter (isnotnull(f#11) AND (f#11 = M))
+         +- FileScan json [data#9,f#11,series_id#16] Batched: false, DataFilters: [isnotnull(f#11), (f#11 = M)], Format: JSON, Location: InMemoryFileIndex[hdfs://localhost:9000/EIATotal/TOTAL.json], PartitionFilters: [], PushedFilters: [IsNotNull(f), EqualTo(f,M)], ReadSchema: struct<data:array<array<string>>,f:string,series_id:string>

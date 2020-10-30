@@ -37,19 +37,32 @@ First, we will load cleansed data from a previous ETL phase that was stored in h
 sc <- sparklyr::spark_connect(
   master = 'local[2]', 
   spark_home = Sys.getenv("SPARK_HOME"))
-total_energy_df <- sparklyr::spark_read_parquet(
+total_energy_fact_df <- sparklyr::spark_read_parquet(
   sc = sc, 
-  name = 'total_energy_df', 
-  path = "hdfs://localhost:9000/Processed/TotalEnergyDF")
-total_energy_df <- select(
-    total_energy_df, 
-    "date", 
-    "name", 
-    "value", 
-    "units") %>% 
+  name = 'total_energy_fact_df', 
+  path = "hdfs://localhost:9000/Processed/TotalEnergyFactDF")
+
+total_energy_dim_df <- sparklyr::spark_read_parquet(
+  sc = sc, 
+  name = 'total_energy_dim_df', 
+  path = "hdfs://localhost:9000/Processed/TotalEnergyDimDF") %>% select(
+    "name",
+    "units",
+    "series_id"
+  )
+
+total_energy_df <- total_energy_dim_df %>% 
+  filter(name %rlike% "(Electricity Net Generation From.*All Sectors, Monthly$)") %>% 
+  sdf_broadcast() %>% 
+  left_join(
+    total_energy_fact_df,
+    by = "series_id",
+    how = "left"
+  ) %>% 
   mutate(
     date = as.Date(date),
-    value = as.numeric(value)) %>% 
+    value = as.numeric(value)
+  ) %>% 
   arrange(date)
 ```
 
@@ -57,8 +70,7 @@ We will cut off any measurements older than 1990, as many records are missing fo
 
 ```{r}
 electricity_net_generation_df <- total_energy_df %>% 
-  dplyr::filter(date >= as.Date("1990-01-01") & date < as.Date("2020-01-01")) %>% 
-  dplyr::filter(name %rlike% "(Electricity Net Generation From.*All Sectors$)")
+  dplyr::filter(date >= as.Date("1990-01-01") & date < as.Date("2020-01-01"))
 ```
 
 ```{r eval=FALSE}
@@ -87,7 +99,7 @@ date_limit_df <- electricity_net_generation_df %>%
 ```{r}
 electricity_net_generation_pivot_df <- electricity_net_generation_df %>% 
   dplyr::mutate(
-    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
+    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors, Monthly$', 'eng_$1'),
     name = tolower(name)
   ) %>% 
   mutate(
@@ -134,7 +146,7 @@ min_cutoff_date <- '2009-01-01'
 electricity_net_generation_pivot_reduced_df <- electricity_net_generation_df %>% 
   filter(date > as.Date(min_cutoff_date)) %>% 
   dplyr::mutate(
-    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors$', 'eng_$1'),
+    name = regexp_replace(name, '^Electricity Net Generation From (.*), All Sectors, Monthly$', 'eng_$1'),
     name = tolower(name)) %>% 
   mutate(
     name = regexp_replace(name, ' ', '_')
