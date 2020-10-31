@@ -1,0 +1,32 @@
+== Parsed Logical Plan ==
+'Project [unresolvedalias('series_id, None), unresolvedalias('data, None)]
++- Project [copyright#0, description#1, end#2, f#3, geography#4, iso3166#5, lat#6, lon#8, name#9, source#10, start#11, units#12, last_updated#13, series_id#14, data#15]
+   +- Filter (f#3 = M)
+      +- GlobalLimit 2000
+         +- LocalLimit 2000
+            +- Relation[copyright#0,description#1,end#2,f#3,geography#4,iso3166#5,lat#6,latlon#7,lon#8,name#9,source#10,start#11,units#12,last_updated#13,series_id#14,data#15] json
+
+== Analyzed Logical Plan ==
+series_id: string, data: array<array<string>>
+Project [series_id#14, data#15]
++- Project [copyright#0, description#1, end#2, f#3, geography#4, iso3166#5, lat#6, lon#8, name#9, source#10, start#11, units#12, last_updated#13, series_id#14, data#15]
+   +- Filter (f#3 = M)
+      +- GlobalLimit 2000
+         +- LocalLimit 2000
+            +- Relation[copyright#0,description#1,end#2,f#3,geography#4,iso3166#5,lat#6,latlon#7,lon#8,name#9,source#10,start#11,units#12,last_updated#13,series_id#14,data#15] json
+
+== Optimized Logical Plan ==
+Project [series_id#14, data#15]
++- Filter (isnotnull(f#3) AND (f#3 = M))
+   +- GlobalLimit 2000
+      +- LocalLimit 2000
+         +- Project [f#3, series_id#14, data#15]
+            +- Relation[copyright#0,description#1,end#2,f#3,geography#4,iso3166#5,lat#6,latlon#7,lon#8,name#9,source#10,start#11,units#12,last_updated#13,series_id#14,data#15] json
+
+== Physical Plan ==
+*(2) Project [series_id#14, data#15]
++- *(2) Filter (isnotnull(f#3) AND (f#3 = M))
+   +- *(2) GlobalLimit 2000
+      +- Exchange SinglePartition, true, [id=#120]
+         +- *(1) LocalLimit 2000
+            +- FileScan json [f#3,series_id#14,data#15] Batched: false, DataFilters: [], Format: JSON, Location: InMemoryFileIndex[hdfs://localhost:9000/EIAElec/ELEC.json], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<f:string,series_id:string,data:array<array<string>>>

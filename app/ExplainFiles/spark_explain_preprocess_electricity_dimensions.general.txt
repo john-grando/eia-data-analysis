@@ -1,0 +1,30 @@
+== Parsed Logical Plan ==
+Project [copyright#0, description#1, end#2, f#3, geography#4, iso3166#5, lat#6, lon#8, name#9, source#10, start#11, units#12, last_updated#13, series_id#14]
++- Project [copyright#0, description#1, end#2, f#3, geography#4, iso3166#5, lat#6, lon#8, name#9, source#10, start#11, units#12, last_updated#13, series_id#14, data#15]
+   +- Filter (f#3 = M)
+      +- GlobalLimit 2000
+         +- LocalLimit 2000
+            +- Relation[copyright#0,description#1,end#2,f#3,geography#4,iso3166#5,lat#6,latlon#7,lon#8,name#9,source#10,start#11,units#12,last_updated#13,series_id#14,data#15] json
+
+== Analyzed Logical Plan ==
+copyright: string, description: string, end: string, f: string, geography: string, iso3166: string, lat: string, lon: string, name: string, source: string, start: string, units: string, last_updated: string, series_id: string
+Project [copyright#0, description#1, end#2, f#3, geography#4, iso3166#5, lat#6, lon#8, name#9, source#10, start#11, units#12, last_updated#13, series_id#14]
++- Project [copyright#0, description#1, end#2, f#3, geography#4, iso3166#5, lat#6, lon#8, name#9, source#10, start#11, units#12, last_updated#13, series_id#14, data#15]
+   +- Filter (f#3 = M)
+      +- GlobalLimit 2000
+         +- LocalLimit 2000
+            +- Relation[copyright#0,description#1,end#2,f#3,geography#4,iso3166#5,lat#6,latlon#7,lon#8,name#9,source#10,start#11,units#12,last_updated#13,series_id#14,data#15] json
+
+== Optimized Logical Plan ==
+Filter (isnotnull(f#3) AND (f#3 = M))
++- GlobalLimit 2000
+   +- LocalLimit 2000
+      +- Project [copyright#0, description#1, end#2, f#3, geography#4, iso3166#5, lat#6, lon#8, name#9, source#10, start#11, units#12, last_updated#13, series_id#14]
+         +- Relation[copyright#0,description#1,end#2,f#3,geography#4,iso3166#5,lat#6,latlon#7,lon#8,name#9,source#10,start#11,units#12,last_updated#13,series_id#14,data#15] json
+
+== Physical Plan ==
+*(2) Filter (isnotnull(f#3) AND (f#3 = M))
++- *(2) GlobalLimit 2000
+   +- Exchange SinglePartition, true, [id=#89]
+      +- *(1) LocalLimit 2000
+         +- FileScan json [copyright#0,description#1,end#2,f#3,geography#4,iso3166#5,lat#6,lon#8,name#9,source#10,start#11,units#12,last_updated#13,series_id#14] Batched: false, DataFilters: [], Format: JSON, Location: InMemoryFileIndex[hdfs://localhost:9000/EIAElec/ELEC.json], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<copyright:string,description:string,end:string,f:string,geography:string,iso3166:string,la...

@@ -47,15 +47,54 @@ def main(args = None):
     global MySpark
     MySpark = MySpark or MyPySpark(master = 'local[3]')
     #make schema
-    # int_fields_l = []
-    # str_fields_l = []
-    # int_fields_schema_l = [StructField(field_name, IntegerType(), nullable=True) for field_name in int_fields_l]
-    # total_schema = StructType(
-    #     extend(
-    #         int_fields_schema_l,
-    #         str_fields_schema_l
-    #     )
-    # )
+    str_fields_l = [
+        "category_id",
+        "f",
+        "name",
+        "notes",
+        "parent_category_id",
+        "units",
+        "end",
+        "start"
+    ]
+    str_fields_no_null_l = [
+        "series_id"
+    ]
+    array_fields_l = [
+        StructField(
+            "data",
+            ArrayType(
+                ArrayType(
+                    StringType()
+                )
+            )
+        ),
+        StructField(
+            "childseries",
+            ArrayType(
+                StringType()
+            )
+        )
+    ]
+    str_fields_schema_l = [
+        StructField(
+            field_name,
+            StringType(),
+            nullable=True
+        ) for field_name in str_fields_l
+    ]
+    str_fields_no_null_schema_l = [
+        StructField(
+            field_name,
+            StringType(),
+            nullable=False
+        ) for field_name in str_fields_no_null_l]
+    #int_fields_schema_l = [StructField(field_name, IntegerType(), nullable=True) for field_name in int_fields_l]
+    total_schema = StructType(
+        str_fields_schema_l +
+        str_fields_no_null_schema_l +
+        array_fields_l
+    )
     #remove .option('inferSchema') and add schema as second argument to .json for explicit structure
     #records are comprised of monthly, quarterly, and annual data
     #return only monthly data as the others can be calculated later
@@ -65,7 +104,7 @@ def main(args = None):
         .spark\
         .read\
         .option("inferSchema", "true")\
-        .json('/EIATotal/TOTAL.json')
+        .json('/EIATotal/TOTAL.json', schema = total_schema)
 
     total_energy_raw_monthly_df = total_energy_raw_df\
         .filter(
