@@ -6,6 +6,7 @@ from app import MyLogger
 from pyspark.sql import DataFrame
 from pyspark.rdd import RDD
 import pyspark.sql.functions as pysF
+import pandas as pd
 
 class MyPySpark(MyLogger):
     """
@@ -56,6 +57,17 @@ class MyPySpark(MyLogger):
                 f.write(df._jdf.queryExecution().toString())
         except:
             print('explain plan output failed')
+        return
+
+    @staticmethod
+    def print_df_samples(df, logger, df_limit=10, max_columns=20):
+        """
+        General printout of DataFrames
+        """
+        pd.set_option('display.max_columns', max_columns)
+        logger.info("Sample:\n%sDataframe:\n%s\n",
+        df.limit(df_limit).toPandas().dtypes,
+        df.limit(df_limit).toPandas().head())
         return
 
     def eia_data_explode(df):

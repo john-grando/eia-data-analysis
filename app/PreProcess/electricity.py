@@ -151,13 +151,9 @@ def main(args = None):
         try:
             pd.set_option('display.max_columns', 20)
             MySpark.logger.info("Dimension Table")
-            MySpark.logger.info("Sample:\n%sDataframe:\n%s",
-            electricity_dim_df.limit(10).toPandas().dtypes,
-            electricity_dim_df.limit(5).toPandas().head())
+            MySpark.print_df_samples(df = electricity_dim_df, logger = MySpark.logger)
             MySpark.logger.info("Fact Table")
-            MySpark.logger.info("Sample:\n%sDataframe:\n%s",
-            electricity_fact_df.limit(10).toPandas().dtypes,
-            electricity_fact_df.limit(5).toPandas().head())
+            MySpark.print_df_samples(df = electricity_fact_df, logger = MySpark.logger)
         finally:
             pd.set_option('display.max_columns', 0)
 

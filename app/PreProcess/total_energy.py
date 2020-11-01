@@ -113,7 +113,6 @@ def main(args = None):
 
     #filter and cleanse data
     #separate into dimension and fact tables
-    print(total_energy_raw_monthly_df.select("last_updated").limit(10).toPandas()["last_updated"].tolist())
     total_energy_dim_df = total_energy_raw_monthly_df\
         .drop(
             "data"
@@ -160,15 +159,10 @@ def main(args = None):
 
     if args.display_test:
         try:
-            pd.set_option('display.max_columns', 20)
             MySpark.logger.info("Dimension Table")
-            MySpark.logger.info("Sample:\n%sDataframe:\n%s",
-            total_energy_dim_df.limit(10).toPandas().dtypes,
-            total_energy_dim_df.limit(5).toPandas().head())
+            MySpark.print_df_samples(df = total_energy_dim_df, logger = MySpark.logger)
             MySpark.logger.info("Fact Table")
-            MySpark.logger.info("Sample:\n%sDataframe:\n%s",
-            total_energy_fact_df.limit(10).toPandas().dtypes,
-            total_energy_fact_df.limit(5).toPandas().head())
+            MySpark.print_df_samples(df = total_energy_fact_df, logger = MySpark.logger)
         finally:
             pd.set_option('display.max_columns', 0)
 
