@@ -117,9 +117,7 @@ def main(args = None):
         .drop("data")\
         .withColumn(
             "last_updated",
-            pysF.to_utc_timestamp(
-                pysF.to_timestamp("last_updated"),
-                pysF.regexp_extract(pysF.col("last_updated"), '.*((\+|-)[\d:]+)', 1)))\
+            pysF.to_timestamp("last_updated", "yyyy-MM-dd'T'HH:mm:ssXXX"))\
         .replace(
             {
                 "":None,
