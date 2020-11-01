@@ -55,7 +55,8 @@ def main(args = None):
         "parent_category_id",
         "units",
         "end",
-        "start"
+        "start",
+        "last_updated"
     ]
     str_fields_no_null_l = [
         "series_id"
@@ -112,48 +113,26 @@ def main(args = None):
 
     #filter and cleanse data
     #separate into dimension and fact tables
+    print(total_energy_raw_monthly_df.select("last_updated").limit(10).toPandas()["last_updated"].tolist())
     total_energy_dim_df = total_energy_raw_monthly_df\
         .drop(
             "data"
         )\
         .withColumn(
-            "childseries",
-            pysF.concat_ws(", ", pysF.col("childseries")))\
+            "last_updated",
+            pysF.to_utc_timestamp(
+                pysF.to_timestamp("last_updated"),
+                pysF.regexp_extract(pysF.col("last_updated"), '.*((\+|-)[\d:]+)', 1)))\
         .replace(
             {
                 "":None,
                 "null":None
             })
-
-    total_energy_fact_df = total_energy_raw_monthly_df\
-        .select(
-            "series_id",
-            "data"
-        )\
-        .withColumn(
-            "data_exploded",
-            pysF.explode("data"))\
-        .withColumn(
-            "date_raw",
-            pysF.col("data_exploded").getItem(0))\
-        .withColumn(
-            "date",
-            pysF.to_date(
-                pysF.unix_timestamp(
-                    pysF.col("date_raw"),
-                    'yyyyMM').cast("timestamp")))\
-        .withColumn(
-            "value",
-            pysF.col("data_exploded").getItem(1))\
-        .drop(
-            "data",
-            "data_exploded",
-            "date_raw")\
-        .replace(
-            {
-                "":None,
-                "null":None
-            })
+    total_energy_fact_df = MyPySpark.eia_data_explode(
+        total_energy_raw_monthly_df\
+            .select(
+                "series_id",
+                "data"))
     #save plans to ExplainFiles directory by default
     MySpark.explain_to_file(
         df = total_energy_dim_df,

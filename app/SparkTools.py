@@ -5,6 +5,7 @@ import datetime
 from app import MyLogger
 from pyspark.sql import DataFrame
 from pyspark.rdd import RDD
+import pyspark.sql.functions as pysF
 
 class MyPySpark(MyLogger):
     """
@@ -56,3 +57,34 @@ class MyPySpark(MyLogger):
         except:
             print('explain plan output failed')
         return
+
+    def eia_data_explode(df):
+        """
+        Reformat eia data array into one row per measurement.
+        Format should be ["series_id", "data"]
+        """
+        return df\
+        .withColumn(
+            "data_exploded",
+            pysF.explode("data"))\
+        .withColumn(
+            "date_raw",
+            pysF.col("data_exploded").getItem(0))\
+        .withColumn(
+            "date",
+            pysF.to_date(
+                pysF.unix_timestamp(
+                    pysF.col("date_raw"),
+                    'yyyyMM').cast("timestamp")))\
+        .withColumn(
+            "value",
+            pysF.col("data_exploded").getItem(1))\
+        .drop(
+            "data",
+            "data_exploded",
+            "date_raw")\
+        .replace(
+            {
+                "":None,
+                "null":None
+            })

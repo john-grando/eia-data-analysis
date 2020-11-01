@@ -107,13 +107,24 @@ def main(args = None):
             pysF.col("f") == 'M')\
         .drop("latlon")
 
-    electricity_fact_df = electricity_raw_monthly_df\
-        .select(
-            "series_id",
-            "data")
+    electricity_fact_df = MyPySpark.eia_data_explode(
+        electricity_raw_monthly_df\
+            .select(
+                "series_id",
+                "data"))
 
     electricity_dim_df = electricity_raw_monthly_df\
-        .drop("data")
+        .drop("data")\
+        .withColumn(
+            "last_updated",
+            pysF.to_utc_timestamp(
+                pysF.to_timestamp("last_updated"),
+                pysF.regexp_extract(pysF.col("last_updated"), '.*((\+|-)[\d:]+)', 1)))\
+        .replace(
+            {
+                "":None,
+                "null":None
+            })
 
     print('facts')
     electricity_fact_df.printSchema()
