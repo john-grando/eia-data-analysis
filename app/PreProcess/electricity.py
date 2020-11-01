@@ -99,8 +99,8 @@ def main(args = None):
     electricity_raw_df = MySpark\
         .spark\
         .read\
-        .json('/EIAElec/ELEC.json', schema = electricity_schema)\
-        .limit(2000)
+        .json('/EIAElec/ELEC.json', schema = electricity_schema)#\
+        # .limit(2000)
 
     electricity_raw_monthly_df = electricity_raw_df\
         .filter(
@@ -125,14 +125,6 @@ def main(args = None):
                 "":None,
                 "null":None
             })
-
-    print('facts')
-    electricity_fact_df.printSchema()
-    electricity_fact_df.show()
-    print("dimensions")
-    electricity_dim_df.printSchema()
-    electricity_dim_df.show()
-
 
     # save plans to ExplainFiles directory by default
     MySpark.explain_to_file(
