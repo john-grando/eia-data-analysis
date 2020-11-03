@@ -2,6 +2,7 @@ import os, sys, re, argparse
 import pandas as pd
 from pyspark.sql.types import *
 import pyspark.sql.functions as pysF
+import pyspark.sql.types as pysT
 
 py_file_path = os.path.join(
     os.path.dirname(
@@ -99,31 +100,77 @@ def main(args = None):
     electricity_raw_df = MySpark\
         .spark\
         .read\
-        .json('/EIAElec/ELEC.json', schema = electricity_schema)#\
-        # .limit(2000)
+        .json('/EIAElec/ELEC.json', schema = electricity_schema)
 
     electricity_raw_monthly_df = electricity_raw_df\
-        .filter(
-            pysF.col("f") == 'M')\
-        .drop("latlon")
+        .filter(pysF.col("f") == 'M')
 
     electricity_fact_df = MyPySpark.eia_data_explode(
         electricity_raw_monthly_df\
+            .filter(pysF.col("series_id").isNotNull())\
             .select(
                 "series_id",
                 "data"))
 
     electricity_dim_df = electricity_raw_monthly_df\
-        .drop("data")\
+        .drop("data", "latlon")\
+        .filter(pysF.col("series_id").isNotNull())\
         .withColumn(
             "last_updated",
             pysF.to_timestamp("last_updated", "yyyy-MM-dd'T'HH:mm:ssXXX"))\
+        .withColumn(
+            "lat",
+            pysF.col("lat").cast(pysT.DoubleType())
+        )\
+        .withColumn(
+            "lon",
+            pysF.col("lat").cast(pysT.DoubleType())
+        )\
+        .withColumn(
+            "start",
+            pysF.col("start").cast(pysT.IntegerType())
+        )\
+        .withColumn(
+            "end",
+            pysF.col("end").cast(pysT.IntegerType())
+        )\
+        .withColumn(
+            "split_name",
+            pysF.split("name", ":")
+        )\
+        .withColumn(
+            "value_type",
+            pysF.trim(pysF.col("split_name").getItem(0))
+        )\
+        .withColumn(
+            "plant_name",
+            pysF.trim(pysF.col("split_name").getItem(1))
+        )\
+        .withColumn(
+            "fuel_type",
+            pysF.trim(pysF.col("split_name").getItem(2))
+        )\
+        .withColumn(
+            "engine_type",
+            pysF.trim(pysF.col("split_name").getItem(3))
+        )\
+        .withColumn(
+            "plant_id",
+            pysF.regexp_extract(pysF.col("series_id"), r".*\.(\d+)-.*", 1)
+        )\
+        .withColumn(
+            "state",
+            pysF.regexp_extract(pysF.col("iso3166"), r".*-(.*)$", 1)
+        )\
+        .drop("split_name")\
         .replace(
             {
                 "":None,
                 "null":None
             })
 
+    print(list(set(electricity_dim_df.select("value_type").toPandas()["value_type"].tolist())))
+    sys.exit()
     # save plans to ExplainFiles directory by default
     MySpark.explain_to_file(
         df = electricity_dim_df,
