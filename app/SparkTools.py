@@ -6,6 +6,8 @@ from app import MyLogger
 from pyspark.sql import DataFrame
 from pyspark.rdd import RDD
 import pyspark.sql.functions as pysF
+from pyspark.sql import DataFrame
+from typing import Iterable
 import pandas as pd
 
 class MyPySpark(MyLogger):
@@ -69,6 +71,32 @@ class MyPySpark(MyLogger):
         df.limit(df_limit).toPandas().dtypes,
         df.limit(df_limit).toPandas().head())
         return
+
+    @staticmethod
+    def melt(
+            df: DataFrame,
+            id_vars: Iterable[str], value_vars: Iterable[str],
+            var_name: str="variable", value_name: str="value") -> DataFrame:
+        """
+        Convert :class:`DataFrame` from wide to long format.
+        Source: https://stackoverflow.com/questions/41670103/how-to-melt-spark-dataframe
+        """
+
+        # -------------------------------------------------------------------------------
+        # Create array<struct<variable: str, value: ...>>
+        # -------------------------------------------------------------------------------
+        _vars_and_vals = pysF.array(*(
+            pysF.struct(pysF.lit(c).alias(var_name), pysF.col(c).alias(value_name))
+            for c in value_vars))
+
+        # -------------------------------------------------------------------------------
+        # Add to the DataFrame and explode
+        # -------------------------------------------------------------------------------
+        _tmp = df.withColumn("_vars_and_vals", pysF.explode(_vars_and_vals))
+
+        cols = id_vars + [
+                pysF.col("_vars_and_vals")[x].alias(x) for x in [var_name, value_name]]
+        return _tmp.select(*cols)
 
     def eia_data_explode(df):
         """
