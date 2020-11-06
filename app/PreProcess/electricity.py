@@ -168,9 +168,6 @@ def main(args = None):
                 "":None,
                 "null":None
             })
-
-    print(list(set(electricity_dim_df.select("value_type").toPandas()["value_type"].tolist())))
-    sys.exit()
     # save plans to ExplainFiles directory by default
     MySpark.explain_to_file(
         df = electricity_dim_df,
