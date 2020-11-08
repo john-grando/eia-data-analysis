@@ -62,17 +62,6 @@ class MyPySpark(MyLogger):
         return
 
     @staticmethod
-    def print_df_samples(df, logger, df_limit=10, max_columns=20):
-        """
-        General printout of DataFrames
-        """
-        pd.set_option('display.max_columns', max_columns)
-        logger.info("Sample:\n%sDataframe:\n%s\n",
-        df.limit(df_limit).toPandas().dtypes,
-        df.limit(df_limit).toPandas().head())
-        return
-
-    @staticmethod
     def melt(
             df: DataFrame,
             id_vars: Iterable[str], value_vars: Iterable[str],
@@ -97,6 +86,16 @@ class MyPySpark(MyLogger):
         cols = id_vars + [
                 pysF.col("_vars_and_vals")[x].alias(x) for x in [var_name, value_name]]
         return _tmp.select(*cols)
+
+    def print_df_samples(self, df, df_limit=10, max_columns=20):
+        """
+        General printout of DataFrames
+        """
+        pd.set_option('display.max_columns', max_columns)
+        self.logger.info("Sample:\n%sDataframe:\n%s\n",
+        df.limit(df_limit).toPandas().dtypes,
+        df.limit(df_limit).toPandas().head())
+        return
 
     def eia_data_explode(df):
         """
@@ -128,3 +127,42 @@ class MyPySpark(MyLogger):
                 "":None,
                 "null":None
             })
+
+    def eia_output_df(self, df_d, display_output = None, s3_backup = None):
+        """
+        Handle dictionary containing dataframe for logging output and file save.
+        input dictionary (df_d) should have these keys:
+        df - DataFrame
+        description - non-whitespace explanation of DataFrame
+        path - distributed file system path
+        """
+        df_key_l = ["df", "description", "path"]
+        if not all(k in df_key_l for k in df_d.keys()):
+            self.logger.error("bad dictionary passed to output function: %s", df_d)
+            return
+        self.explain_to_file(
+            df = df_d["df"],
+            description = df_d["description"],
+            stamp = '')
+        df_d["df"].write\
+            .parquet(
+                path = df_d["path"],
+                mode = 'overwrite')
+
+        if display_output:
+            try:
+                pd.set_option('display.max_columns', 20)
+                self.logger.info("%s", df_d["description"])
+                self.print_df_samples(df = df_d["df"])
+            finally:
+                pd.set_option('display.max_columns', 0)
+
+        if s3_backup:
+            S3O = S3Access(
+                bucket = 'power-plant-data',
+                key = 'processed')
+            S3O.sync_hdfs_to_s3(
+                hdfs_site = 'hdfs://localhost:9000',
+                hdfs_folder = df["path"])
+            self.logger.info("s3 synced for %s", df_d["path"])
+        return

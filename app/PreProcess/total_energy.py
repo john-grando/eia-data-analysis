@@ -132,49 +132,28 @@ def main(args = None):
                 "series_id",
                 "data"))
     #save plans to ExplainFiles directory by default
-    MySpark.explain_to_file(
-        df = total_energy_dim_df,
-        description = 'preprocess_total_energy_dimensions',
-        stamp = '')
-
-    MySpark.explain_to_file(
-        df = total_energy_fact_df,
-        description = 'preprocess_total_energy_facts',
-        stamp = '')
-
     #keep data for future processing
     #use parquet because analsis and ML processes
     #will only pull specific columns, so columnar save
     #format is preferred.
-    total_energy_dim_df.write\
-        .parquet(
-            path = '/Processed/TotalEnergyDimDF',
-            mode = 'overwrite')
 
-    total_energy_fact_df.write\
-        .parquet(
-            path = '/Processed/TotalEnergyFactDF',
-            mode = 'overwrite')
+    df_l = [
+        {
+            "df" : total_energy_dim_df,
+            "description" : "preprocess_total_energy_dimensions",
+            "path" : "/Processed/TotalEnergyDimDF"},
+        {
+            "df" : total_energy_fact_df,
+            "description" : "preprocess_total_energy_facts",
+            "path" : "/Processed/TotalEnergyFactDF"}
+    ]
 
-    if args.display_test:
-        try:
-            MySpark.logger.info("Dimension Table")
-            MySpark.print_df_samples(df = total_energy_dim_df, logger = MySpark.logger)
-            MySpark.logger.info("Fact Table")
-            MySpark.print_df_samples(df = total_energy_fact_df, logger = MySpark.logger)
-        finally:
-            pd.set_option('display.max_columns', 0)
-
-    if args.s3:
-        S3O = S3Access(
-            bucket = 'power-plant-data',
-            key = 'processed')
-        S3O.sync_hdfs_to_s3(
-            hdfs_site = 'hdfs://localhost:9000',
-            hdfs_folder = 'Processed/TotalEnergyDimDF')
-        S3O.sync_hdfs_to_s3(
-            hdfs_site = 'hdfs://localhost:9000',
-            hdfs_folder = 'Processed/TotalEnergyFactDF')
+    for df in df_l:
+        MySpark.eia_output_df(
+            df_d = df,
+            display_output = args.display_test,
+            s3_backup = args.s3
+        )
 
 if __name__ == "__main__":
     main()

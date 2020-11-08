@@ -144,6 +144,10 @@ def main(args = None):
         "Net generation"
     ]
 
+    receipt_columns_l = [
+        "Receipts of fossil fuels by electricity plants",
+    ]
+
     electricity_power_dim_df = electricity_base_dim_df\
         .filter(
             pysF.col("name").rlike("|".join(power_columns_l))
@@ -169,6 +173,10 @@ def main(args = None):
             pysF.trim(pysF.col("split_name").getItem(3))
         )\
         .withColumn(
+            "frequency",
+            pysF.trim(pysF.col("split_name").getItem(4))
+        )\
+        .withColumn(
             "plant_id",
             pysF.regexp_extract(pysF.col("series_id"), r".*\.(\d+)-.*", 1)
         )\
@@ -179,9 +187,44 @@ def main(args = None):
                 "null":None
             })
 
+    electricity_receipts_dim_df = electricity_base_dim_df\
+        .filter(
+            pysF.col("name").rlike("|".join(receipt_columns_l))
+        )\
+        .withColumn(
+            "split_name",
+            pysF.split("name", ":")
+        )\
+        .withColumn(
+            "value_type",
+            pysF.trim(pysF.col("split_name").getItem(0))
+        )\
+        .withColumn(
+            "fuel_type",
+            pysF.trim(pysF.col("split_name").getItem(1))
+        )\
+        .withColumn(
+            "plant_type",
+            pysF.trim(pysF.col("split_name").getItem(3))
+        )\
+        .withColumn(
+            "frequency",
+            pysF.trim(pysF.col("split_name").getItem(4))
+        )\
+        .drop("split_name")\
+        .replace(
+            {
+                "":None,
+                "null":None
+            })
+
     electricity_dim_df = electricity_base_dim_df\
         .filter(
-            ~pysF.col("name").rlike("|".join(power_columns_l))
+            ~pysF.col("name").rlike(
+                "|".join(
+                    power_columns_l +
+                    receipt_columns_l)
+            )
         )\
         .withColumn(
             "split_name",
@@ -194,62 +237,33 @@ def main(args = None):
                 "null":None
             })
 
-    # save plans to ExplainFiles directory by default
-    MySpark.explain_to_file(
-        df = electricity_power_dim_df,
-        description = 'preprocess_electricity_power_dimensions',
-        stamp = '')
+    # save plans to ExplainFiles, write to hdfs, and sync
 
-    MySpark.explain_to_file(
-        df = electricity_dim_df,
-        description = 'preprocess_electricity_dimensions',
-        stamp = '')
+    df_l = [
+        {
+            "df" : electricity_fact_df,
+            "description" : "preprocess_electricity_facts",
+            "path" : "/Processed/ElectricityFactDF"},
+        {
+            "df" : electricity_power_dim_df,
+            "description" : "preprocess_electricity_power_dimensions",
+            "path" : "/Processed/ElectricityPowerDimDF"},
+        {
+            "df" : electricity_dim_df,
+            "description" : "preprocess_electricity_dimensions",
+            "path" : "/Processed/ElectricityDimDF"},
+        {
+            "df" : electricity_receipts_dim_df,
+            "description" : "preprocess_electricity_receipts_dimensions",
+            "path" : "/Processed/ElectricityReceiptsDimDF"},
+    ]
 
-    MySpark.explain_to_file(
-        df = electricity_fact_df,
-        description = 'preprocess_electricity_facts',
-        stamp = '')
-
-    electricity_power_dim_df.write\
-        .parquet(
-            path = '/Processed/ElectricityPowerDimDF',
-            mode = 'overwrite')
-
-    electricity_dim_df.write\
-        .parquet(
-            path = '/Processed/ElectricityDimDF',
-            mode = 'overwrite')
-
-    electricity_fact_df.write\
-        .parquet(
-            path = '/Processed/ElectricityFactDF',
-            mode = 'overwrite')
-
-    if args.display_test:
-        try:
-            for df in [
-                (electricity_power_dim_df, "Power Dimension"),
-                (electricity_dim_df, "Dimension"),
-                (electricity_fact_df, "Fact")]:
-                pd.set_option('display.max_columns', 20)
-                MySpark.logger.info("%s", df[1])
-                MySpark.print_df_samples(df = df[0], logger = MySpark.logger)
-        finally:
-            pd.set_option('display.max_columns', 0)
-
-    if args.s3:
-        S3O = S3Access(
-            bucket = 'power-plant-data',
-            key = 'processed')
-        S3O.sync_hdfs_to_s3(
-            hdfs_site = 'hdfs://localhost:9000',
-            hdfs_folder = 'Processed/ElectricityPowerDimDF')
-        S3O.sync_hdfs_to_s3(
-            hdfs_site = 'hdfs://localhost:9000',
-            hdfs_folder = 'Processed/ElectricityDimDF')
-        S3O.sync_hdfs_to_s3(
-            hdfs_site = 'hdfs://localhost:9000',
-            hdfs_folder = 'Processed/ElectricityFactDF')
+    for df in df_l:
+        MySpark.eia_output_df(
+            df_d = df,
+            display_output = args.display_test,
+            s3_backup = args.s3
+        )
 
 if __name__ == "__main__":
     main()
