@@ -112,7 +112,7 @@ def main(args = None):
                 "series_id",
                 "data"))
 
-    electricity_dim_df = electricity_raw_monthly_df\
+    electricity_base_dim_df = electricity_raw_monthly_df\
         .drop("data", "latlon")\
         .filter(pysF.col("series_id").isNotNull())\
         .withColumn(
@@ -133,6 +133,20 @@ def main(args = None):
         .withColumn(
             "end",
             pysF.col("end").cast(pysT.IntegerType())
+        )\
+        .withColumn(
+            "state",
+            pysF.regexp_extract(pysF.col("iso3166"), r".*-(.*)$", 1)
+        )
+
+    power_columns_l = [
+        "Fuel consumption MMBtu",
+        "Net generation"
+    ]
+
+    electricity_power_dim_df = electricity_base_dim_df\
+        .filter(
+            pysF.col("name").rlike("|".join(power_columns_l))
         )\
         .withColumn(
             "split_name",
@@ -158,9 +172,20 @@ def main(args = None):
             "plant_id",
             pysF.regexp_extract(pysF.col("series_id"), r".*\.(\d+)-.*", 1)
         )\
+        .drop("split_name")\
+        .replace(
+            {
+                "":None,
+                "null":None
+            })
+
+    electricity_dim_df = electricity_base_dim_df\
+        .filter(
+            ~pysF.col("name").rlike("|".join(power_columns_l))
+        )\
         .withColumn(
-            "state",
-            pysF.regexp_extract(pysF.col("iso3166"), r".*-(.*)$", 1)
+            "split_name",
+            pysF.split("name", ":")
         )\
         .drop("split_name")\
         .replace(
@@ -168,7 +193,13 @@ def main(args = None):
                 "":None,
                 "null":None
             })
+
     # save plans to ExplainFiles directory by default
+    MySpark.explain_to_file(
+        df = electricity_power_dim_df,
+        description = 'preprocess_electricity_power_dimensions',
+        stamp = '')
+
     MySpark.explain_to_file(
         df = electricity_dim_df,
         description = 'preprocess_electricity_dimensions',
@@ -178,6 +209,11 @@ def main(args = None):
         df = electricity_fact_df,
         description = 'preprocess_electricity_facts',
         stamp = '')
+
+    electricity_power_dim_df.write\
+        .parquet(
+            path = '/Processed/ElectricityPowerDimDF',
+            mode = 'overwrite')
 
     electricity_dim_df.write\
         .parquet(
@@ -191,11 +227,13 @@ def main(args = None):
 
     if args.display_test:
         try:
-            pd.set_option('display.max_columns', 20)
-            MySpark.logger.info("Dimension Table")
-            MySpark.print_df_samples(df = electricity_dim_df, logger = MySpark.logger)
-            MySpark.logger.info("Fact Table")
-            MySpark.print_df_samples(df = electricity_fact_df, logger = MySpark.logger)
+            for df in [
+                (electricity_power_dim_df, "Power Dimension"),
+                (electricity_dim_df, "Dimension"),
+                (electricity_fact_df, "Fact")]:
+                pd.set_option('display.max_columns', 20)
+                MySpark.logger.info("%s", df[1])
+                MySpark.print_df_samples(df = df[0], logger = MySpark.logger)
         finally:
             pd.set_option('display.max_columns', 0)
 
@@ -203,6 +241,9 @@ def main(args = None):
         S3O = S3Access(
             bucket = 'power-plant-data',
             key = 'processed')
+        S3O.sync_hdfs_to_s3(
+            hdfs_site = 'hdfs://localhost:9000',
+            hdfs_folder = 'Processed/ElectricityPowerDimDF')
         S3O.sync_hdfs_to_s3(
             hdfs_site = 'hdfs://localhost:9000',
             hdfs_folder = 'Processed/ElectricityDimDF')

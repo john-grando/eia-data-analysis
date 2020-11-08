@@ -27,8 +27,8 @@ class MyPySpark(MyLogger):
                 #set spark.driver.memory as well as spark.executor.memory when running in standalone
                 conf = pyspark\
                     .SparkConf()\
-                    .set('spark.driver.memory', '6g')\
-                    .set('spark.executor.memory', '5g')\
+                    .set('spark.driver.memory', '4g')\
+                    .set('spark.executor.memory', '3g')\
                     .setAppName("PowerPlant")\
                     .setMaster(master)
                 self.sc = pyspark\
