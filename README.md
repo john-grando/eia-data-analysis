@@ -11,5 +11,8 @@
   - Processed/TotalEnergyDimDF - Dimensions  
 - Electricity (app/PreProcess/electricity.py)  
   - Processed/ElectricityFactDF - Facts
-  - Processed/ElectricityPowerDimDF - Power generation/consumption metrics
-  - Processed/ElectricityReceiptsDimDF - Receipts
+  - Processed/ElectricityPowerDimDF - Power generation/consumption
+  - Processed/ElectricityPlantLevelDimDF - Individual plant
+  - Processed/ElectricityRetailDimDF - sales information
+  - Processed/ElectricityFossilFuelDimDF - Fuel type information including cost
+  - Processed/ElectricityFossilFuelQualityDimDF - Fuel type quality

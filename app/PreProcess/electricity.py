@@ -135,26 +135,79 @@ def main(args = None):
             pysF.col("end").cast(pysT.IntegerType())
         )\
         .withColumn(
-            "state",
-            pysF.regexp_extract(pysF.col("iso3166"), r".*-(.*)$", 1)
+            "split_name",
+            pysF.split("name", ":")
         )
 
-    power_columns_l = [
-        "Fuel consumption MMBtu",
-        "Net generation"
+    power_rows_l = [
+        "^ELEC\.GEN\.",
+        "^ELEC\.CONS_TOT.",
+        "^ELEC\.CONS_TOT_BTU\.",
+        "^ELEC\.CONS_EG\.",
+        "^ELEC\.CONS_EG_BTU\.",
+        "^ELEC\.CONS_UTO\.",
+        "^ELEC\.CONS_UTO_BTU\."
     ]
 
-    receipt_columns_l = [
-        "Receipts of fossil fuels by electricity plants",
+    plant_level_rows_l = [
+        "^ELEC\.PLANT\.GEN\.",
+        "^ELEC\.PLANT\.CONS_TOT.",
+        "^ELEC\.PLANT\.CONS_TOT_BTU\.",
+        "^ELEC\.PLANT\.CONS_EG\.",
+        "^ELEC\.PLANT\.CONS_EG_BTU\.",
+        "^ELEC\.PLANT\.CONS_UTO\.",
+        "^ELEC\.PLANT\.CONS_UTO_BTU\.",
+        "^ELEC\.PLANT\.AVG_HEAT\."
+    ]
+
+    retail_rows_l = [
+        "^ELEC\.SALES\.",
+        "^ELEC\.REV\.",
+        "^ELEC\.PRICE\.",
+        "^ELEC\.CUSTOMERS\."
+    ]
+
+    fossil_fuel_rows_l = [
+        "^ELEC\.STOCKS\.",
+        "^ELEC\.RECEIPTS\.",
+        "^ELEC\.RECEIPTS_BTU\.",
+        "^ELEC\.COST\.",
+        "^ELEC\.COST_BTU\.",
+    ]
+
+    fossil_fuel_quality_rows_l = [
+        "^ELEC\.SULFUR_CONTENT\.",
+        "^ELEC\.ASH_CONTENT\."
     ]
 
     electricity_power_dim_df = electricity_base_dim_df\
         .filter(
-            pysF.col("name").rlike("|".join(power_columns_l))
+            pysF.col("series_id").rlike("|".join(power_rows_l))
         )\
         .withColumn(
-            "split_name",
-            pysF.split("name", ":")
+            "value_type",
+            pysF.trim(pysF.col("split_name").getItem(0))
+        )\
+        .withColumn(
+            "fuel_type",
+            pysF.trim(pysF.col("split_name").getItem(1))
+        )\
+        .withColumn(
+            "region",
+            pysF.trim(pysF.col("split_name").getItem(2))
+        )\
+        .withColumn(
+            "sector",
+            pysF.trim(pysF.col("split_name").getItem(3))
+        )\
+        .withColumn(
+            "frequency",
+            pysF.trim(pysF.col("split_name").getItem(4))
+        )
+
+    electricity_plant_level_dim_df = electricity_base_dim_df\
+        .filter(
+            pysF.col("series_id").rlike("|".join(plant_level_rows_l))
         )\
         .withColumn(
             "value_type",
@@ -179,21 +232,32 @@ def main(args = None):
         .withColumn(
             "plant_id",
             pysF.regexp_extract(pysF.col("series_id"), r".*\.(\d+)-.*", 1)
-        )\
-        .drop("split_name")\
-        .replace(
-            {
-                "":None,
-                "null":None
-            })
+        )
 
-    electricity_receipts_dim_df = electricity_base_dim_df\
+    electricity_retail_dim_df = electricity_base_dim_df\
         .filter(
-            pysF.col("name").rlike("|".join(receipt_columns_l))
+            pysF.col("series_id").rlike("|".join(retail_rows_l))
         )\
         .withColumn(
-            "split_name",
-            pysF.split("name", ":")
+            "value_type",
+            pysF.trim(pysF.col("split_name").getItem(0))
+        )\
+        .withColumn(
+            "region",
+            pysF.trim(pysF.col("split_name").getItem(1))
+        )\
+        .withColumn(
+            "sector",
+            pysF.trim(pysF.col("split_name").getItem(2))
+        )\
+        .withColumn(
+            "frequency",
+            pysF.trim(pysF.col("split_name").getItem(3))
+        )
+
+    electricity_fossil_fuel_dim_df = electricity_base_dim_df\
+        .filter(
+            pysF.col("series_id").rlike("|".join(fossil_fuel_rows_l))
         )\
         .withColumn(
             "value_type",
@@ -204,41 +268,59 @@ def main(args = None):
             pysF.trim(pysF.col("split_name").getItem(1))
         )\
         .withColumn(
-            "plant_type",
+            "region",
+            pysF.trim(pysF.col("split_name").getItem(2))
+        )\
+        .withColumn(
+            "sector",
             pysF.trim(pysF.col("split_name").getItem(3))
         )\
         .withColumn(
             "frequency",
             pysF.trim(pysF.col("split_name").getItem(4))
-        )\
-        .drop("split_name")\
-        .replace(
-            {
-                "":None,
-                "null":None
-            })
+        )
 
-    electricity_dim_df = electricity_base_dim_df\
+    electricity_fossil_fuel_quality_dim_df = electricity_base_dim_df\
         .filter(
-            ~pysF.col("name").rlike(
-                "|".join(
-                    power_columns_l +
-                    receipt_columns_l)
-            )
+            pysF.col("series_id").rlike("|".join(fossil_fuel_quality_rows_l))
         )\
         .withColumn(
-            "split_name",
-            pysF.split("name", ":")
+            "value_type",
+            pysF.trim(pysF.col("split_name").getItem(0))
         )\
-        .drop("split_name")\
-        .replace(
-            {
-                "":None,
-                "null":None
-            })
+        .withColumn(
+            "quality_type",
+            pysF.trim(pysF.col("split_name").getItem(1))
+        )\
+        .withColumn(
+            "fuel_type",
+            pysF.trim(pysF.col("split_name").getItem(2))
+        )\
+        .withColumn(
+            "region",
+            pysF.trim(pysF.col("split_name").getItem(3))
+        )\
+        .withColumn(
+            "sector",
+            pysF.trim(pysF.col("split_name").getItem(4))
+        )\
+        .withColumn(
+            "frequency",
+            pysF.trim(pysF.col("split_name").getItem(5))
+        )\
+
+    #Catch-all for any missed dimensions
+    electricity_missed_dim_df = electricity_base_dim_df\
+        .filter(
+            ~pysF.col("series_id").rlike("|".join(
+                    power_rows_l +
+                    plant_level_rows_l +
+                    retail_rows_l +
+                    fossil_fuel_rows_l +
+                    fossil_fuel_quality_rows_l))
+        )
 
     # save plans to ExplainFiles, write to hdfs, and sync
-
     df_l = [
         {
             "df" : electricity_fact_df,
@@ -249,18 +331,39 @@ def main(args = None):
             "description" : "preprocess_electricity_power_dimensions",
             "path" : "/Processed/ElectricityPowerDimDF"},
         {
-            "df" : electricity_dim_df,
-            "description" : "preprocess_electricity_dimensions",
-            "path" : "/Processed/ElectricityDimDF"},
+            "df" : electricity_plant_level_dim_df,
+            "description" : "preprocess_electricity_plant_level_dimensions",
+            "path" : "/Processed/ElectricityPlantLevelDimDF"},
         {
-            "df" : electricity_receipts_dim_df,
-            "description" : "preprocess_electricity_receipts_dimensions",
-            "path" : "/Processed/ElectricityReceiptsDimDF"},
+            "df" : electricity_retail_dim_df,
+            "description" : "preprocess_electricity_retail_dimensions",
+            "path" : "/Processed/ElectricityRetailDimDF"},
+        {
+            "df" : electricity_fossil_fuel_dim_df,
+            "description" : "preprocess_electricity_fossil_fuel_dimensions",
+            "path" : "/Processed/ElectricityFossilFuelDimDF"},
+        {
+            "df" : electricity_fossil_fuel_quality_dim_df,
+            "description" : "preprocess_electricity_fossil_fuel_quality_dimensions",
+            "path" : "/Processed/ElectricityFossilFuelQualityDimDF"},
+        {
+            "df" : electricity_missed_dim_df,
+            "description" : "preprocess_electricity_missed_dimensions",
+            "path" : "/Processed/ElectricityMissedDimDF"},
     ]
 
-    for df in df_l:
+    for df_d in df_l:
+        #Common formatting
+        if "split_name" in df_d["df"].columns:
+            df_d["df"] = df_d["df"].drop("split_name")
+        df_d["df"] = df_d["df"]\
+            .replace(
+                {
+                    "":None,
+                    "null":None
+                })
         MySpark.eia_output_df(
-            df_d = df,
+            df_d = df_d,
             display_output = args.display_test,
             s3_backup = args.s3
         )
