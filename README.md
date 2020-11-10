@@ -4,7 +4,6 @@
 - plant data location (source - U.S. Energy Information Administration): https://www.eia.gov/opendata/bulkfiles.php  
 - weather data location (source - NOAA): https://www.ncei.noaa.gov/data/global-summary-of-the-day/archive/
 
-
 ## PreProcessed Data  From EIA Bulk Downloads  
 - Total Energy (app/PreProcess/total_energy.py)  
   - Processed/TotalEnergyFactDF - Facts  
