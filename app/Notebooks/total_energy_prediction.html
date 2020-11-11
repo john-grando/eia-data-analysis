@@ -659,7 +659,12 @@ total_energy_df &lt;- total_energy_dim_df %&gt;%
     formula = date ~ name, 
     fun.aggregate = list(value = &quot;mean&quot;))
 
-electricity_net_generation_pivot_df &lt;-  sparklyr::sdf_persist(electricity_net_generation_pivot_df)</code></pre>
+electricity_net_generation_pivot_df &lt;- sparklyr::sdf_register(
+    electricity_net_generation_pivot_df, 
+    &quot;electricity_net_generation_pivot_df&quot;)
+sparklyr::tbl_cache(
+  sc, 
+  &quot;electricity_net_generation_pivot_df&quot;)</code></pre>
 <p>And now, we can take a first look at the net generation by fuel type. It’s immediately obvious that coal, natural gas, and nuclear power make up the major portion of consumed fuels, so we will group all others into a single category for simplicity.</p>
 <pre class="r"><code>color_values &lt;- colorspace::diverge_hcl(n = 12, h = c(180, 260), c = c(0, 260), l = c(0,80), power = 2)
 color_values_big &lt;- colorspace::diverge_hcl(n = 20, h = c(180, 260), c = c(0, 260), l = c(0,100), power = 2)
@@ -709,7 +714,12 @@ electricity_net_generation_pivot_reduced_df &lt;- electricity_net_generation_df 
     formula = date ~ name, 
     fun.aggregate = list(value = &quot;mean&quot;))
 
-electricity_net_generation_pivot_reduced_df &lt;-  sparklyr::sdf_persist(electricity_net_generation_pivot_reduced_df)
+electricity_net_generation_pivot_reduced_df &lt;- sparklyr::sdf_register(
+    electricity_net_generation_pivot_reduced_df, 
+    &quot;electricity_net_generation_pivot_reduced_df&quot;)
+sparklyr::tbl_cache(
+  sc, 
+  &quot;electricity_net_generation_pivot_reduced_df&quot;)
 
 date_limit_reduced_df &lt;- electricity_net_generation_pivot_reduced_df %&gt;% 
   group_by() %&gt;% 
