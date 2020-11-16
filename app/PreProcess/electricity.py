@@ -128,12 +128,16 @@ def main(args = None):
         )\
         .withColumn(
             "start",
-            pysF.col("start").cast(pysT.IntegerType())
-        )\
+            pysF.to_date(
+                pysF.unix_timestamp(
+                    pysF.col("start"),
+                    'yyyyMM').cast("timestamp")))\
         .withColumn(
             "end",
-            pysF.col("end").cast(pysT.IntegerType())
-        )\
+            pysF.to_date(
+                pysF.unix_timestamp(
+                    pysF.col("end"),
+                    'yyyyMM').cast("timestamp")))\
         .withColumn(
             "split_name",
             pysF.split("name", ":")
