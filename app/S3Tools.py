@@ -49,6 +49,7 @@ class S3Access(MyLogger):
         )
         process_error, _ = sub_process.communicate()
         if sub_process.returncode != 0:
+            print(process_error)
             self.logger.error('hdfs sync failed.  Try manually to diagnose error')
             return
         self.logger.info('hdfs sync ended')
@@ -71,25 +72,25 @@ class S3Access(MyLogger):
                 resp = None
                 self.logger.error('Unable to reach s3 bucket')
                 sys.exit(1)
-            try:
-                f_regex = re.compile(file_regex)
-                #python 3.8+ required for walrus operator
-                s3Contents = [f['Key'] for f in resp['Contents'] if (match := re.search(f_regex, f['Key']))]
-            except Exception as e:
-                self.logger.exception(e)
-                self.logger.error('failed to filter s3 folder.  Bucket: %s and location: %s',
-                    self.bucket,
-                    self.key)
-                sys.exit(1)
+            if resp.get("Contents"):
+                try:
+                    f_regex = re.compile(file_regex)
+                    #python 3.8+ required for walrus operator
+                    s3Contents = [f['Key'] for f in resp['Contents'] if (match := re.search(f_regex, f['Key']))]
+                except Exception as e:
+                    self.logger.exception(e)
+                    self.logger.error('failed to filter s3 folder.  Bucket: %s and location: %s',
+                        self.bucket,
+                        self.key)
+                    sys.exit(1)
             try:
                 kwargs['ContinuationToken'] = resp['NextContinuationToken']
             except KeyError:
                 break
         if not s3Contents:
-            self.logger.error(
+            self.logger.warning(
                 'No files were returned from s3 bucket: %s and location: %s filtering by %s',
                 self.bucket,
                 self.key,
                 file_regex)
-            sys.exit(1)
         return s3Contents
