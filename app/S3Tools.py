@@ -49,7 +49,6 @@ class S3Access(MyLogger):
         )
         process_error, _ = sub_process.communicate()
         if sub_process.returncode != 0:
-            print(process_error)
             self.logger.error('hdfs sync failed.  Try manually to diagnose error')
             return
         self.logger.info('hdfs sync ended')

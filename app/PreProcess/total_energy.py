@@ -11,7 +11,6 @@ py_file_path = os.path.join(
     ".."
 )
 sys.path.append(py_file_path)
-from app import MyLogger
 from app.SparkTools import MyPySpark
 
 def build_parser():
