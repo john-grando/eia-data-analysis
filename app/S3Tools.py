@@ -76,7 +76,7 @@ class S3Access(MyLogger):
                 try:
                     f_regex = re.compile(file_regex)
                     #python 3.8+ required for walrus operator
-                    s3Contents = [f['Key'] for f in resp['Contents'] if (match := re.search(f_regex, f['Key']))]
+                    s3Contents += [f['Key'] for f in resp['Contents'] if (match := re.search(f_regex, f['Key']))]
                 except Exception as e:
                     self.logger.exception(e)
                     self.logger.error('failed to filter s3 folder.  Bucket: %s and location: %s',

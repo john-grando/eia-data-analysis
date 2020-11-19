@@ -162,7 +162,7 @@ class MyPySpark(MyLogger):
         if s3_backup:
             S3O = S3Access(
                 bucket = 'power-plant-data',
-                key = "/".join(["backup", df_d["path"]]))
+                key = "backup" + df_d["path"])
             S3O.sync_hdfs_to_s3(
                 hdfs_site = 'hdfs://localhost:9000',
                 hdfs_folder = df_d["path"])
