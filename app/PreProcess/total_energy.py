@@ -107,7 +107,7 @@ def main(args = None):
 
     total_energy_raw_monthly_df = total_energy_raw_df\
         .filter(
-            total_energy_raw_df["f"] == 'M')\
+            total_energy_raw_df["f"] == 'M')
 
     #filter and cleanse data
     #separate into dimension and fact tables
