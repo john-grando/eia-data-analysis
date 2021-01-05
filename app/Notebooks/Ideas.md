@@ -12,8 +12,9 @@
 - Grain is probably going to be one row per plant per fuel type per month
 
 #### Analyses
-- Cluster plants (or states) based on available attributes
-- Time series analysis via python and statsmodels (using pandas_udf) of grouped states/plants. https://medium.com/walmartglobaltech/multi-time-series-forecasting-in-spark-cc42be812393)
+- Cluster plants (or states) based on available attributes using scikit-learn pipelines
+- cluster plants (or states) based on available attributes using sagemaker (maybe scikit and spark ml)
+- Time series analysis via python and statsmodels (using pandas_udf) of grouped states/plants. https://medium.com/walmartglobaltech/multi-time-series-forecasting-in-spark-cc42be812393).  This will most likely be done in sagemaker due to size.
 - Overall data manipulation and analysis on the resulting granular representation of U.S. electric generation and fuel consumption.
 - network graph of state energy interchange
 

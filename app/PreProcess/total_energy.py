@@ -11,9 +11,7 @@ py_file_path = os.path.join(
     ".."
 )
 sys.path.append(py_file_path)
-from app import MyLogger
 from app.SparkTools import MyPySpark
-from app.S3Tools import S3Access
 
 def build_parser():
     """
@@ -109,7 +107,7 @@ def main(args = None):
 
     total_energy_raw_monthly_df = total_energy_raw_df\
         .filter(
-            total_energy_raw_df["f"] == 'M')\
+            total_energy_raw_df["f"] == 'M')
 
     #filter and cleanse data
     #separate into dimension and fact tables

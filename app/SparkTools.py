@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 
 import datetime
-from app import MyLogger
 from pyspark.sql import DataFrame
 from pyspark.rdd import RDD
 import pyspark.sql.functions as pysF
 from pyspark.sql import DataFrame
 from typing import Iterable
 import pandas as pd
+
+from app import MyLogger
+from app.S3Tools import S3Access
 
 class MyPySpark(MyLogger):
     """
@@ -160,9 +162,9 @@ class MyPySpark(MyLogger):
         if s3_backup:
             S3O = S3Access(
                 bucket = 'power-plant-data',
-                key = 'processed')
+                key = "backup" + df_d["path"])
             S3O.sync_hdfs_to_s3(
                 hdfs_site = 'hdfs://localhost:9000',
-                hdfs_folder = df["path"])
+                hdfs_folder = df_d["path"])
             self.logger.info("s3 synced for %s", df_d["path"])
         return
